@@ -1,0 +1,28 @@
+{
+  "name": "tablero-features-notion",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Sincroniza el estado de tus features (documentos ODD en odd/tasks/*.md) hacia un tablero de Notion.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sync": "tsx src/sync-tablero-features.ts",
+    "sync:dry": "tsx src/sync-tablero-features.ts --dry-run",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.10.2",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}

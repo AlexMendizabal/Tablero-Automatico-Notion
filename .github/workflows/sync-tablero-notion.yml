@@ -1,0 +1,103 @@
+# Publica en Notion el estado de cada feature a partir de odd/tasks/*.md.
+# Diseño y contrato del documento: ver el README de este repositorio.
+#
+# Por qué tres disparadores de sincronización (push, cron y manual; los PR
+# solo validan): un push solo alcanza cuando cambia un documento,
+# pero el merge de un PR no toca ninguno y "Días sin actividad" cambia con el
+# paso del tiempo. Sin el cron diario, el tablero se congela entre ediciones.
+
+name: Tablero de features en Notion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'odd/tasks/**'
+      - 'src/sync-tablero-features.ts'
+      # Un cambio en el propio pipeline también tiene que pasar por él.
+      - '.github/workflows/sync-tablero-notion.yml'
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    paths:
+      - 'odd/tasks/**'
+      - 'src/sync-tablero-features.ts'
+      - '.github/workflows/sync-tablero-notion.yml'
+      - 'package.json'
+      - 'package-lock.json'
+  schedule:
+    # 11:00 UTC = 07:00 en Bolivia (UTC-4).
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# Dos sincronizaciones no escriben a la vez sobre la misma base. GitHub deja
+# como máximo una corrida en espera por grupo: si llega otra, reemplaza a la
+# que esperaba. Para un sync no importa, porque la última corrida publica el
+# estado más reciente. En un PR, la validación nueva cancela la anterior.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('tablero-pr-{0}', github.ref) || 'tablero-sync' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # En los PR solo se valida el formato de los documentos, sin credenciales
+  # y sin consultar Notion: un documento mal formado corta con código 1
+  # antes del merge.
+  validar:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Historial y ramas completos: las anclas "commits" y las fechas de
+          # las ramas no existen en un clon superficial.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Validar documentos (sin consultar Notion)
+        run: npm run sync:dry
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  sincronizar:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Distingue "falta configurar" de "falló la sincronización": con los
+      # secrets vacíos, el job corta acá, en segundos y con un error propio,
+      # antes de instalar nada.
+      - name: Verificar secrets de Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_TABLERO_DB_ID: ${{ secrets.NOTION_TABLERO_DB_ID }}
+        run: |
+          if [ -z "$NOTION_TOKEN" ] || [ -z "$NOTION_TABLERO_DB_ID" ]; then
+            echo "::error title=Configuración faltante::Faltan los secrets NOTION_TOKEN y/o NOTION_TABLERO_DB_ID. Cargarlos en Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Sin NOTION_TOKEN o NOTION_TABLERO_DB_ID el script corta con código 1:
+      # el job queda en rojo en vez de informar un éxito que no escribió nada.
+      - name: Sincronizar con Notion
+        run: npm run sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_TABLERO_DB_ID: ${{ secrets.NOTION_TABLERO_DB_ID }}
