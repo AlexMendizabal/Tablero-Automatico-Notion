@@ -136,6 +136,8 @@ se haya sincronizado sin problemas.
 
 ## Automatización
 
+> En este repositorio plantilla el workflow está **desactivado**, para que no aparezca en rojo sin credenciales. Al adoptarlo, activalo en la pestaña Actions después de cargar los dos secrets.
+
 El workflow `.github/workflows/sync-tablero-notion.yml` corre en cuatro
 disparadores:
 
