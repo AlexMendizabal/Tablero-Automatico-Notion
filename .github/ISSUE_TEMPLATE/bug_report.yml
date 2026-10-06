@@ -1,0 +1,46 @@
+name: Bug report
+description: Something does not work as the README describes.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Issues are welcome in English or Spanish.
+        **Never paste your `NOTION_TOKEN` or any other secret in this form.**
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran (for example `npm run sync:dry`) and, if relevant, a minimal `odd/tasks/*.md` document that triggers the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: Console output of the script. Remove tokens, database IDs and private data first.
+      render: shell
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      placeholder: "22.x"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where does it run?
+      options:
+        - Locally
+        - GitHub Actions
+        - Both
+    validations:
+      required: true
