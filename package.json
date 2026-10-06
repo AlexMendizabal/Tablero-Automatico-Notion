@@ -5,6 +5,23 @@
   "type": "commonjs",
   "description": "Sincroniza el estado de tus features (documentos ODD en odd/tasks/*.md) hacia un tablero de Notion.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexMendizabal/Tablero-Automatico-Notion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AlexMendizabal/Tablero-Automatico-Notion/issues"
+  },
+  "homepage": "https://github.com/AlexMendizabal/Tablero-Automatico-Notion#readme",
+  "keywords": [
+    "notion",
+    "github",
+    "kanban",
+    "project-management",
+    "odd",
+    "automation",
+    "typescript"
+  ],
   "engines": {
     "node": ">=22"
   },
