@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-06
+
 ### Added
 
 - Community health files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking for forks that customized the schema:** `ESQUEMA_ESPERADO` is
   replaced by `TIPOS_PROPIEDAD` (property types) and `TEXTOS_POR_IDIOMA`
   (names per language). Move any customization to those settings.
+- Dependencies: `dotenv` 18 and `ts-jest` 29.4.14.
 
 ## [1.0.0] - 2026-10-06
 
@@ -65,5 +68,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests.
 - Example feature document (`odd/tasks/ejemplo-feature.md`) and test suite.
 
-[Unreleased]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/releases/tag/v1.0.0
