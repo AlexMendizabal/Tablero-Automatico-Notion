@@ -1,6 +1,6 @@
 {
   "name": "tablero-automatico-notion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "commonjs",
   "description": "Sincroniza el estado de tus features (documentos ODD en odd/tasks/*.md) hacia un tablero de Notion.",
