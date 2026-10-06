@@ -19,9 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with badges and a demo GIF.
 - `repository`, `bugs`, `homepage` and `keywords` metadata in `package.json`.
 
-### Changed
-
-- `package.json` is no longer marked as `private`.
 
 ## [1.0.0] - 2026-10-06
 

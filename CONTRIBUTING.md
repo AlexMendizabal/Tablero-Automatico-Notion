@@ -24,7 +24,7 @@ npm ci
 
 ## Checks
 
-Run these before opening a pull request; CI runs the first two on every push
+Run these before opening a pull request; CI runs the first two on every push to `main`
 and pull request:
 
 ```bash
