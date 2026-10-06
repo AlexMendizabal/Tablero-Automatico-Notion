@@ -101,3 +101,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_TABLERO_DB_ID: ${{ secrets.NOTION_TABLERO_DB_ID }}
+          BOARD_LANGUAGE: ${{ vars.BOARD_LANGUAGE }}

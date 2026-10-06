@@ -21,11 +21,12 @@ Syncs the status of a repository's features (ODD documents in
 `odd/tasks/*.md`) into a Notion database, so you get a board that is always
 up to date without maintaining it by hand.
 
-> **Note on naming:** the project was written in Spanish. The Notion property
-> names, status values and document keywords (`Estado`, `Terminada`, `ramas`,
-> `## Tareas`, ...) are identifiers the script requires, so they are kept in
-> Spanish in this README too. English translations are given in parentheses
-> where useful.
+> **Note on language:** the project was written in Spanish, but the board can
+> be in **English or Spanish**. The `BOARD_LANGUAGE` variable (`es` by
+> default, or `en`) picks the Notion property names, status values and row
+> texts (see [Configuration](#configuration)). Feature documents accept both
+> Spanish and English keywords at all times (`ramas` or `branches`,
+> `## Tareas` or `## Tasks`). The script's console output stays in Spanish.
 
 ## How it works
 
@@ -61,8 +62,8 @@ Core ideas:
   "In progress" or "Done": it comes from the checked tasks and from whether
   there are open PRs, and nothing else (see
   [How the status is derived](#how-the-status-is-derived)).
-- **The stalled view.** With "Días sin actividad" (days without activity) as
-  a sortable column, the Notion database can be filtered or sorted to show
+- **The stalled view.** With "Days inactive" ("Días sin actividad") as a
+  sortable column, the Notion database can be filtered or sorted to show
   first the features that have gone the longest without movement. Without
   that number, those features stay hidden among the rest.
 - **Never deletes.** A Notion page whose slug no longer has a matching
@@ -92,29 +93,31 @@ npm ci
    content** capabilities. Without all three, the script cannot read the
    schema, create pages or update them.
 2. Create a new database of type **"Table - full page"**.
-3. Add these 11 properties with these **exact names and types**. The names
-   are Spanish identifiers the script looks for, so they must be created
-   exactly as written (Notion is case- and accent-sensitive; a name that does
-   not match is reported as a missing property):
+3. Add these 11 properties with these **exact names and types**, using the
+   column that matches `BOARD_LANGUAGE` (Spanish names for `es`, the default;
+   English names for `en`). The script looks the names up literally (Notion
+   is case- and accent-sensitive; a name that does not match is reported as a
+   missing property):
 
-   | Property | Type | Meaning |
-   |---|---|---|
-   | Feature | Title | Feature title |
-   | Slug | Text (rich text) | Document file name |
-   | Estado | Select | Status |
-   | Progreso | Text (rich text) | Progress |
-   | Pendiente | Text (rich text) | Next pending task |
-   | PRs abiertos | Text (rich text) | Open PRs |
-   | Ramas | Text (rich text) | Branches |
-   | Días sin actividad | Number | Days without activity |
-   | Actualizado | Date | Last updated |
-   | Documento | URL | Link to the document |
-   | Huella | Text (rich text) | Fingerprint of the task list |
+   | Spanish name (`es`) | English name (`en`) | Type | Meaning |
+   |---|---|---|---|
+   | Feature | Feature | Title | Feature title |
+   | Slug | Slug | Text (rich text) | Document file name |
+   | Estado | Status | Select | Derived status |
+   | Progreso | Progress | Text (rich text) | Progress, e.g. `2/3 tareas` / `2/3 tasks` |
+   | Pendiente | Pending | Text (rich text) | Next pending task |
+   | PRs abiertos | Open PRs | Text (rich text) | Open PRs |
+   | Ramas | Branches | Text (rich text) | Live branches |
+   | Días sin actividad | Days inactive | Number | Days without activity |
+   | Actualizado | Updated | Date | Last updated |
+   | Documento | Document | URL | Link to the document |
+   | Huella | Fingerprint | Text (rich text) | Fingerprint of the task list |
 
    If any of these columns is renamed or changes type in Notion, the
-   `ESQUEMA_ESPERADO` constant in `src/sync-tablero-features.ts` must be
-   updated too. The two sides of the contract live there and in Notion, and
-   neither can be discovered from the other automatically.
+   `TEXTOS_POR_IDIOMA` dictionary (names) or `TIPOS_PROPIEDAD` (types) in
+   `src/sync-tablero-features.ts` must be updated too. The two sides of the
+   contract live there and in Notion, and neither can be discovered from the
+   other automatically.
 4. Share the database with the integration: open the database, open the
    `•••` menu in the top-right corner → **Connections** → find and add the
    integration created in step 1. Without this step, every call from the
@@ -143,13 +146,19 @@ NOTION_TOKEN=secret_...
 NOTION_TABLERO_DB_ID=a1b2c3d4e5f67890a1b2c3d4e5f67890
 ```
 
-Two optional variables, with their default value in parentheses, adapt the
-script to a repository with a different layout:
+Optional variables, with their default value in parentheses:
 
+- `BOARD_LANGUAGE` (`es`): language of the Notion board — property names,
+  status values and row texts. `es` for Spanish, `en` for English; unset or
+  empty means `es`. Any other value stops the run with a clear error and a
+  non-zero exit code. It does not affect how documents are read: both
+  languages' keywords are always accepted. Switching an existing board to
+  another language also means renaming its Notion columns (see the table
+  above).
 - `TABLERO_CARPETA` (`odd/tasks`): folder where the documents live, relative
   to the repository root.
 - `TABLERO_RAMA_BASE` (`main`): base branch used to build the link in each
-  row's "Documento" property.
+  row's "Documento" ("Document") property.
 
 ## Usage
 
@@ -187,7 +196,7 @@ triggers:
    format (`sync:dry`, without credentials), so a PR fails before merge if a
    document is malformed.
 3. **`schedule`** (daily cron): a push alone is not enough to keep the board
-   current, because "Días sin actividad" changes with the mere passage of
+   current, because "Days inactive" changes with the mere passage of
    time and merging a PR does not always touch a document. Without this daily
    run, the board freezes between edits.
 4. **`workflow_dispatch`**: to force a manual run.
@@ -197,6 +206,10 @@ variables → Actions**): `NOTION_TOKEN` and `NOTION_TABLERO_DB_ID`. If they
 are missing, the sync job stops within seconds with an explicit error, before
 installing anything, and never reports a success that did not actually write
 anything.
+
+For an English board, add a repository **variable** (not a secret)
+`BOARD_LANGUAGE` with value `en` in the same settings page, under the
+**Variables** tab. If it is not defined, the workflow uses `es`.
 
 Separately, the `.github/workflows/ci.yml` workflow runs `npm run typecheck`
 and `npm test` on every push to `main` and every pull request. It needs no
@@ -220,47 +233,66 @@ ramas: ["docs/odd-<slug>", "feat/<slug>*"]
 - [ ] **QA1 — Manual test**: description.
 ```
 
+The same document with the English keywords, accepted equally (whatever the
+value of `BOARD_LANGUAGE`):
+
+```markdown
+---
+branches: ["docs/odd-<slug>", "feat/<slug>*"]
+---
+
+# Human-readable feature title
+
+## Tasks
+
+- [ ] **T1 — Short name**: description.
+- [ ] **QA1 — Manual test**: description.
+```
+
 Rules:
 
-- **`ramas`** (branches; required, in the frontmatter): JSON array of glob
-  patterns (only `*` as wildcard) that must cover every branch the feature
-  uses. A branch that matches no pattern does not count towards "Ramas",
-  "PRs abiertos" or the activity date.
+- **`ramas`** or **`branches`** (required, in the frontmatter): JSON array of
+  glob patterns (only `*` as wildcard) that must cover every branch the
+  feature uses. A branch that matches no pattern does not count towards the
+  branches, open PRs or activity date columns. Use only one of the two
+  spellings: having both in the same document is a duplicate-key format
+  error.
 - **`commits`** (optional): JSON array of **full** commit hashes (40
   lowercase hexadecimal characters) made directly on the base branch, with no
   PR or branch of their own. They act as activity anchors for that kind of
   work, which would otherwise have no associated date. Requires a full clone
   of the repository (without `fetch-depth: 0` it is reported as an
   environment error).
-- **A single `## Tareas` (tasks) section**: any other level-2 heading closes
-  the section. Having zero, or more than one, `## Tareas` section is a format
-  error.
+- **A single `## Tareas` or `## Tasks` section**: any other level-2 heading
+  closes the section. Having zero, or more than one, task section (including
+  one of each spelling) is a format error.
 - **IDs `T1`, `T2`, ... for work, `QA1`, `QA2`, ... for manual tests**: the
   `QA` prefix is the only thing that distinguishes a task from a manual test
   when deriving the status. The ID goes in bold at the start of the checkbox,
   separated from the name by an em dash (`—`, not a regular hyphen); the
   description after the colon is optional.
 - **Code blocks are ignored**: a ` ```markdown ` block containing an example
-  frontmatter or `## Tareas` section does not count as the document's real
+  frontmatter or task section does not count as the document's real
   frontmatter or section.
 
 A complete example, with one task done, one pending and one pending manual
-test, lives in [`odd/tasks/ejemplo-feature.md`](odd/tasks/ejemplo-feature.md).
+test, lives in [`odd/tasks/ejemplo-feature.md`](odd/tasks/ejemplo-feature.md)
+(written with the Spanish keywords; `branches` and `## Tasks` work the same).
 
 ## How the status is derived
 
-The `Estado` (status) value is one of four, in this order of precedence:
+The status property ("Status" / "Estado") takes one of four values, written
+in the board's language, in this order of precedence:
 
-1. **Terminada** (done): there is at least one task, all of them are checked
-   as done, and there is no open PR on the feature's branches.
-2. **QA pendiente** (QA pending): there are unfinished tasks, and all of them
-   are QA tasks (`QA` prefix).
-3. **Sin empezar** (not started): no task is checked as done.
-4. **En curso** (in progress): any other combination (for example, with tasks
-   done and non-QA tasks pending, or with everything done but a PR still
-   open).
+| English (`en`) | Spanish (`es`) | When |
+|---|---|---|
+| **Done** | **Terminada** | There is at least one task, all of them are checked as done, and there is no open PR on the feature's branches. |
+| **QA pending** | **QA pendiente** | There are unfinished tasks, and all of them are QA tasks (`QA` prefix). |
+| **Not started** | **Sin empezar** | No task is checked as done. |
+| **In progress** | **En curso** | Any other combination (for example, with tasks done and non-QA tasks pending, or with everything done but a PR still open). |
 
-The "Actualizado" (last updated) date — and from it "Días sin actividad" —
+The "Updated" ("Actualizado") date — and from it "Days inactive" ("Días sin
+actividad") —
 takes the most recent of: the commit of each live branch matching the
 patterns, the moment each related PR was merged or closed (or opened, if it
 is still open), and the date of each anchor commit declared in `commits`.
@@ -277,8 +309,8 @@ genuinely stalled features behind a recent date that means nothing.
 - It only sees what reached GitHub: a local commit that was not pushed, or a
   branch that only lives on one machine, are invisible to this script.
 - A failure halfway through rewriting a page body can leave duplicated tasks
-  until the next run, which detects the mismatch (through the "Huella"
-  property) and repairs the whole page.
+  until the next run, which detects the mismatch (through the "Fingerprint" /
+  "Huella" property) and repairs the whole page.
 - Orphan rows (Notion pages whose slug no longer has a document) are reported
   in the output, but never deleted automatically.
 

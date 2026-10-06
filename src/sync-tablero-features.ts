@@ -36,27 +36,124 @@ export const CARPETA_TAREAS = process.env.TABLERO_CARPETA ?? 'odd/tasks';
  *  `TABLERO_RAMA_BASE`. */
 export const RAMA_BASE_DOCUMENTO = process.env.TABLERO_RAMA_BASE ?? 'main';
 
+/** Idioma del tablero de Notion: nombres de las propiedades, valores del
+ *  select de estado y textos escritos en las filas. Variable de entorno:
+ *  `BOARD_LANGUAGE` (`es` por defecto, o `en`; ver `resolverIdiomaTablero`).
+ *  No afecta a los documentos ODD: el parser acepta siempre las palabras
+ *  clave en los dos idiomas. */
+export type Idioma = 'es' | 'en';
+
 /**
- * Propiedades que este script espera encontrar, con este nombre y este tipo
- * exactos, en la base de Notion (`validarEsquema` las compara contra el
- * esquema real antes de escribir nada). Renombrar o retipar una columna en
- * Notion exige cambiar los dos lados del contrato: esta constante Y la base
- * de Notion — ninguno de los dos se puede descubrir automáticamente del
- * otro.
+ * Tipo de Notion de cada propiedad del tablero, por clave interna (neutral,
+ * la misma que el campo correspondiente de `FilaTablero`). El orden de esta
+ * constante es el orden en que se validan y se escriben las propiedades.
  */
-export const ESQUEMA_ESPERADO: Array<{ nombre: string; tipo: string }> = [
-    { nombre: 'Feature', tipo: 'title' },
-    { nombre: 'Slug', tipo: 'rich_text' },
-    { nombre: 'Estado', tipo: 'select' },
-    { nombre: 'Progreso', tipo: 'rich_text' },
-    { nombre: 'Pendiente', tipo: 'rich_text' },
-    { nombre: 'PRs abiertos', tipo: 'rich_text' },
-    { nombre: 'Ramas', tipo: 'rich_text' },
-    { nombre: 'Días sin actividad', tipo: 'number' },
-    { nombre: 'Actualizado', tipo: 'date' },
-    { nombre: 'Documento', tipo: 'url' },
-    { nombre: 'Huella', tipo: 'rich_text' },
-];
+export const TIPOS_PROPIEDAD = {
+    feature: 'title',
+    slug: 'rich_text',
+    estado: 'select',
+    progreso: 'rich_text',
+    pendiente: 'rich_text',
+    prsAbiertos: 'rich_text',
+    ramas: 'rich_text',
+    diasSinActividad: 'number',
+    actualizado: 'date',
+    documento: 'url',
+    huella: 'rich_text',
+} as const;
+
+export type ClavePropiedad = keyof typeof TIPOS_PROPIEDAD;
+
+const CLAVES_PROPIEDAD = Object.keys(TIPOS_PROPIEDAD) as ClavePropiedad[];
+
+interface TextosIdioma {
+    /** Nombre visible en Notion de cada propiedad. */
+    propiedades: Record<ClavePropiedad, string>;
+    /** Valor visible en Notion de cada estado interno (ver `Estado`). */
+    estados: Record<Estado, string>;
+    /** Texto de la propiedad de progreso, ej. "2/3 tareas". */
+    progreso: (hechas: number, total: number) => string;
+}
+
+/**
+ * Lo que el tablero de Notion muestra en cada idioma. Las propiedades
+ * (nombre + `TIPOS_PROPIEDAD`) son las que este script espera encontrar,
+ * exactas, en la base de Notion (`validarEsquema` las compara contra el
+ * esquema real antes de escribir nada). Renombrar o retipar una columna en
+ * Notion exige cambiar los dos lados del contrato: este diccionario Y la base
+ * de Notion — ninguno de los dos se puede descubrir automáticamente del
+ * otro. El `satisfies` obliga a que cada idioma defina todas las claves.
+ */
+export const TEXTOS_POR_IDIOMA = {
+    es: {
+        propiedades: {
+            feature: 'Feature',
+            slug: 'Slug',
+            estado: 'Estado',
+            progreso: 'Progreso',
+            pendiente: 'Pendiente',
+            prsAbiertos: 'PRs abiertos',
+            ramas: 'Ramas',
+            diasSinActividad: 'Días sin actividad',
+            actualizado: 'Actualizado',
+            documento: 'Documento',
+            huella: 'Huella',
+        },
+        estados: {
+            Terminada: 'Terminada',
+            'QA pendiente': 'QA pendiente',
+            'Sin empezar': 'Sin empezar',
+            'En curso': 'En curso',
+        },
+        progreso: (hechas: number, total: number) => `${hechas}/${total} tareas`,
+    },
+    en: {
+        propiedades: {
+            feature: 'Feature',
+            slug: 'Slug',
+            estado: 'Status',
+            progreso: 'Progress',
+            pendiente: 'Pending',
+            prsAbiertos: 'Open PRs',
+            ramas: 'Branches',
+            diasSinActividad: 'Days inactive',
+            actualizado: 'Updated',
+            documento: 'Document',
+            huella: 'Fingerprint',
+        },
+        estados: {
+            Terminada: 'Done',
+            'QA pendiente': 'QA pending',
+            'Sin empezar': 'Not started',
+            'En curso': 'In progress',
+        },
+        progreso: (hechas: number, total: number) => `${hechas}/${total} tasks`,
+    },
+} as const satisfies Record<Idioma, TextosIdioma>;
+
+/** Propiedades (nombre visible + tipo) que la base de Notion debe tener en el
+ *  idioma dado, en el orden de `TIPOS_PROPIEDAD`. */
+export function esquemaEsperado(idioma: Idioma = 'es'): Array<{ nombre: string; tipo: string }> {
+    return CLAVES_PROPIEDAD.map((clave) => ({
+        nombre: TEXTOS_POR_IDIOMA[idioma].propiedades[clave],
+        tipo: TIPOS_PROPIEDAD[clave],
+    }));
+}
+
+export type ResultadoIdioma = { ok: true; idioma: Idioma } | { ok: false; error: string };
+
+/** Interpreta el valor de `BOARD_LANGUAGE`: ausente o vacío → `es`; se
+ *  ignoran espacios y mayúsculas. Cualquier otro valor es un error de
+ *  configuración, nunca un idioma por defecto silencioso. */
+export function resolverIdiomaTablero(valor: string | undefined): ResultadoIdioma {
+    const normalizado = (valor ?? '').trim().toLowerCase();
+    if (normalizado === '') return { ok: true, idioma: 'es' };
+    if (normalizado === 'es' || normalizado === 'en') return { ok: true, idioma: normalizado };
+    return {
+        ok: false,
+        error: `BOARD_LANGUAGE tiene un valor inválido: "${valor}". Valores admitidos: "es" (español, por defecto) o "en" (inglés).`,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // Tipos del núcleo puro
@@ -86,6 +183,9 @@ export type ResultadoParseoDocumento =
     | { ok: true; documento: DocumentoODD }
     | { ok: false; errores: string[] };
 
+/** Estado interno de una feature. Sus valores coinciden con los nombres en
+ *  español por compatibilidad hacia atrás; lo que se escribe en Notion sale
+ *  siempre de `TEXTOS_POR_IDIOMA[idioma].estados`. */
 export type Estado = 'Terminada' | 'QA pendiente' | 'Sin empezar' | 'En curso';
 
 export interface RamaConFecha {
@@ -123,19 +223,26 @@ export interface FilaTablero {
 
 type RichTextArray = Array<{ type: 'text'; text: { content: string } }>;
 
-export interface PropiedadesNotion {
-    Feature: { title: RichTextArray };
-    Slug: { rich_text: RichTextArray };
-    Estado: { select: { name: Estado } };
-    Progreso: { rich_text: RichTextArray };
-    Pendiente: { rich_text: RichTextArray };
-    'PRs abiertos': { rich_text: RichTextArray };
-    Ramas: { rich_text: RichTextArray };
-    'Días sin actividad': { number: number };
-    Actualizado: { date: { start: string } };
-    Documento: { url: string };
-    Huella: { rich_text: RichTextArray };
+/** Valor de cada propiedad de Notion, por clave interna (sin traducir). */
+export interface ValoresPropiedades {
+    feature: { title: RichTextArray };
+    slug: { rich_text: RichTextArray };
+    estado: { select: { name: string } };
+    progreso: { rich_text: RichTextArray };
+    pendiente: { rich_text: RichTextArray };
+    prsAbiertos: { rich_text: RichTextArray };
+    ramas: { rich_text: RichTextArray };
+    diasSinActividad: { number: number };
+    actualizado: { date: { start: string } };
+    documento: { url: string };
+    huella: { rich_text: RichTextArray };
 }
+
+/** Propiedades tal como viajan a Notion, con los nombres visibles del idioma
+ *  dado (ej. `Estado` en español, `Status` en inglés). */
+export type PropiedadesNotion<I extends Idioma = 'es'> = {
+    [K in ClavePropiedad as (typeof TEXTOS_POR_IDIOMA)[I]['propiedades'][K]]: ValoresPropiedades[K];
+};
 
 export interface PropiedadInvalida {
     nombre: string;
@@ -186,6 +293,8 @@ export interface ParametrosConstruirFila {
     fechaDocumento: string | null;
     hoy: Date;
     ownerRepo: string;
+    /** Idioma de los textos de la fila (ej. "2/3 tareas"). Por defecto `es`. */
+    idioma?: Idioma;
 }
 
 export type EjecutarComando = (comando: string, argumentos: string[]) => string;
@@ -213,14 +322,15 @@ export interface ClienteNotion {
     listarTodasLasPaginas(
         dataSourceId: string,
     ): Promise<Array<{ id: string; properties: PropiedadesNotionBrutas; createdTime: string }>>;
-    /** `propiedades` puede venir SIN "Huella": el llamador la escribe aparte,
-     *  al final, una vez que el cuerpo quedó completo (ver "Orquestación"). */
+    /** `propiedades` (ya con los nombres visibles del idioma del tablero)
+     *  puede venir SIN la huella: el llamador la escribe aparte, al final,
+     *  una vez que el cuerpo quedó completo (ver "Orquestación"). */
     crearPagina(
         dataSourceId: string,
-        propiedades: Partial<PropiedadesNotion>,
+        propiedades: PropiedadesNotionBrutas,
         tareas: TareaDocumento[],
     ): Promise<string>;
-    actualizarPropiedades(pageId: string, propiedades: Partial<PropiedadesNotion>): Promise<void>;
+    actualizarPropiedades(pageId: string, propiedades: PropiedadesNotionBrutas): Promise<void>;
     reescribirCuerpo(pageId: string, tareas: TareaDocumento[]): Promise<void>;
 }
 
@@ -235,6 +345,9 @@ export interface DependenciasSincronizar {
      *  `null` → sin credenciales (tests). Objeto → credenciales explícitas. */
     credenciales?: Credenciales | null;
     log?: (linea: string) => void;
+    /** `undefined` → se resuelve de `BOARD_LANGUAGE` (después de cargar el
+     *  `.env`, ver `resolverIdiomaTablero`). Valor → idioma explícito (tests). */
+    idioma?: Idioma;
 }
 
 export interface OpcionesCLI {
@@ -280,13 +393,22 @@ const REGEX_FRONTMATTER_DELIM = /^---\s*$/;
  *  "commits: [...]"), generalizado desde el "ramas:" original para admitir
  *  ambas claves en cualquier orden. */
 const REGEX_CLAVE_FRONTMATTER = /^([A-Za-z_]+):\s*(.*)$/;
-const CLAVES_FRONTMATTER_VALIDAS = new Set(['ramas', 'commits']);
+/** Clave de frontmatter tal como se escribe (español o inglés, se aceptan
+ *  siempre las dos, sin importar `BOARD_LANGUAGE`) → clave canónica. Usar
+ *  las dos grafías del mismo concepto en un documento es clave duplicada. */
+const CLAVES_FRONTMATTER_VALIDAS = new Map<string, 'ramas' | 'commits'>([
+    ['ramas', 'ramas'],
+    ['branches', 'ramas'],
+    ['commits', 'commits'],
+]);
 /** Hash de commit: hexadecimal en minúscula, EXACTAMENTE 40 caracteres (hash
  *  completo). El contrato lo exige completo a propósito: uno abreviado puede
  *  volverse ambiguo cuando el repo crece. */
 const REGEX_COMMIT_HASH = /^[0-9a-f]{40}$/;
 const REGEX_TITULO = /^#\s+(.+?)\s*$/;
-const REGEX_SECCION_TAREAS = /^##\s+Tareas\s*$/;
+/** "## Tareas" o "## Tasks" (los dos idiomas, siempre). */
+const REGEX_SECCION_TAREAS = /^##\s+(Tareas|Tasks)\s*$/;
+const NOMBRE_SECCION_TAREAS = "'## Tareas' (o '## Tasks')";
 const REGEX_SECCION_NIVEL2 = /^##\s+/;
 const REGEX_INICIO_TAREA = /^- \[([ xX])\]/;
 // La descripción tras "**" es OPCIONAL: la regla normativa del contrato
@@ -344,9 +466,10 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
     const lineas = normalizarLineas(contenidoBruto);
     const dentroDeBloque = calcularLineasDentroDeBloqueCodigo(lineas);
 
-    // --- Frontmatter: admite "ramas" (obligatoria) y "commits" (opcional),
-    // una por línea, en cualquier orden. Cualquier otra clave, clave
-    // duplicada o "ramas" ausente es error de formato. ---
+    // --- Frontmatter: admite "ramas" o "branches" (obligatoria, una sola de
+    // las dos) y "commits" (opcional), una por línea, en cualquier orden.
+    // Cualquier otra clave, clave duplicada (incluidas las dos grafías de
+    // "ramas") o "ramas" ausente es error de formato. ---
     let ramas: string[] | null = null;
     let commits: string[] = [];
     let indiceFinDeFrontmatter = -1;
@@ -365,7 +488,8 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
         } else {
             indiceFinDeFrontmatter = indiceCierre;
             const cuerpo = lineas.slice(1, indiceCierre).filter((l) => l.trim() !== '');
-            const valoresPorClave = new Map<string, string>();
+            // Por clave canónica: la grafía usada (para los mensajes) y su valor.
+            const valoresPorClave = new Map<string, { clave: string; valor: string }>();
 
             for (const linea of cuerpo) {
                 const coincidencia = REGEX_CLAVE_FRONTMATTER.exec(linea);
@@ -376,42 +500,48 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                     continue;
                 }
                 const [, clave, valor] = coincidencia;
-                if (!CLAVES_FRONTMATTER_VALIDAS.has(clave)) {
+                const canonica = CLAVES_FRONTMATTER_VALIDAS.get(clave);
+                if (canonica === undefined) {
                     errores.push(
-                        `Frontmatter faltante o inválido: clave desconocida "${clave}" (solo se admiten 'ramas' y 'commits').`,
+                        `Frontmatter faltante o inválido: clave desconocida "${clave}" (solo se admiten 'ramas' (o 'branches') y 'commits').`,
                     );
                     continue;
                 }
-                if (valoresPorClave.has(clave)) {
-                    errores.push(`Frontmatter faltante o inválido: la clave "${clave}" está duplicada.`);
+                const previa = valoresPorClave.get(canonica);
+                if (previa) {
+                    errores.push(
+                        previa.clave === clave
+                            ? `Frontmatter faltante o inválido: la clave "${clave}" está duplicada.`
+                            : `Frontmatter faltante o inválido: la clave "${clave}" está duplicada ("${previa.clave}" y "${clave}" son la misma clave; usá una sola).`,
+                    );
                     continue;
                 }
-                valoresPorClave.set(clave, valor);
+                valoresPorClave.set(canonica, { clave, valor });
             }
 
-            const valorRamas = valoresPorClave.get('ramas');
-            if (valorRamas === undefined) {
+            const entradaRamas = valoresPorClave.get('ramas');
+            if (entradaRamas === undefined) {
                 errores.push(
-                    "Frontmatter faltante o inválido: falta la clave 'ramas' (array JSON de strings).",
+                    "Frontmatter faltante o inválido: falta la clave 'ramas' (o 'branches'): array JSON de strings.",
                 );
             } else {
                 try {
-                    const valor = JSON.parse(valorRamas);
+                    const valor = JSON.parse(entradaRamas.valor);
                     if (!Array.isArray(valor) || !valor.every((v) => typeof v === 'string')) {
                         errores.push(
-                            "Frontmatter faltante o inválido: 'ramas' debe ser un array de strings.",
+                            `Frontmatter faltante o inválido: '${entradaRamas.clave}' debe ser un array de strings.`,
                         );
                     } else {
                         ramas = valor;
                     }
                 } catch {
                     errores.push(
-                        "Frontmatter faltante o inválido: 'ramas' debe ser JSON válido con comillas dobles.",
+                        `Frontmatter faltante o inválido: '${entradaRamas.clave}' debe ser JSON válido con comillas dobles.`,
                     );
                 }
             }
 
-            const valorCommits = valoresPorClave.get('commits');
+            const valorCommits = valoresPorClave.get('commits')?.valor;
             if (valorCommits !== undefined) {
                 try {
                     const valor = JSON.parse(valorCommits);
@@ -449,7 +579,8 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
         errores.push("Falta el título: no se encontró un '# ' fuera de bloques de código.");
     }
 
-    // --- Sección única "## Tareas" ---
+    // --- Sección única "## Tareas" (o "## Tasks"; tener las dos es tener
+    // más de una sección de tareas) ---
     const indicesSeccionTareas: number[] = [];
     for (let i = 0; i < lineas.length; i++) {
         if (dentroDeBloque[i]) continue;
@@ -458,12 +589,14 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
 
     const tareas: TareaDocumento[] = [];
     if (indicesSeccionTareas.length === 0) {
-        errores.push("Falta la sección '## Tareas'.");
+        errores.push(`Falta la sección ${NOMBRE_SECCION_TAREAS}.`);
     } else if (indicesSeccionTareas.length > 1) {
         errores.push(
-            `Debe haber exactamente una sección '## Tareas' (se encontraron ${indicesSeccionTareas.length}, contando solo fuera de bloques de código).`,
+            `Debe haber exactamente una sección ${NOMBRE_SECCION_TAREAS} (se encontraron ${indicesSeccionTareas.length}, contando solo fuera de bloques de código).`,
         );
     } else {
+        // El encabezado tal como lo escribió el documento, para los mensajes.
+        const seccion = `## ${REGEX_SECCION_TAREAS.exec(lineas[indicesSeccionTareas[0]])?.[1] ?? 'Tareas'}`;
         const inicio = indicesSeccionTareas[0] + 1;
         let fin = lineas.length;
         for (let i = inicio; i < lineas.length; i++) {
@@ -483,7 +616,7 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
 
             const completa = REGEX_TAREA_COMPLETA.exec(linea);
             if (!completa) {
-                errores.push(`Checkbox bajo '## Tareas' sin ID válido (formato inválido): "${linea}".`);
+                errores.push(`Checkbox bajo '${seccion}' sin ID válido (formato inválido): "${linea}".`);
                 continue;
             }
             const [, checkbox, negrita, restoBruto] = completa;
@@ -501,7 +634,7 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                 const idCrudo = negrita.slice(0, posicion).trim();
                 const nombre = negrita.slice(posicion + SEPARADOR_RAYA.length).trim();
                 if (!REGEX_ID_TAREA.test(idCrudo)) {
-                    errores.push(`Checkbox bajo '## Tareas' sin ID válido: "${linea}".`);
+                    errores.push(`Checkbox bajo '${seccion}' sin ID válido: "${linea}".`);
                     continue;
                 }
                 tareas.push({
@@ -513,15 +646,15 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                 });
             } else if (negrita.includes(SEPARADOR_GUION)) {
                 errores.push(
-                    `Checkbox bajo '## Tareas' usa guion común en vez de — (raya): "${linea}".`,
+                    `Checkbox bajo '${seccion}' usa guion común en vez de — (raya): "${linea}".`,
                 );
             } else {
-                errores.push(`Checkbox bajo '## Tareas' sin ID válido: "${linea}".`);
+                errores.push(`Checkbox bajo '${seccion}' sin ID válido: "${linea}".`);
             }
         }
 
         if (candidatos === 0) {
-            errores.push("La sección '## Tareas' no tiene ninguna tarea.");
+            errores.push(`La sección '${seccion}' no tiene ninguna tarea.`);
         }
     }
 
@@ -683,6 +816,7 @@ export function normalizarIdBaseNotion(valor: string): ResultadoNormalizacionId 
 
 export function construirFila(parametros: ParametrosConstruirFila): FilaTablero {
     const { documento, todasLasRamas, todosLosPRs, fechasCommits, fechaDocumento, hoy, ownerRepo } = parametros;
+    const idioma = parametros.idioma ?? 'es';
 
     const ramasQueMatchean = todasLasRamas.filter((r) =>
         documento.ramas.some((patron) => coincideRama(patron, r.nombre)),
@@ -709,7 +843,7 @@ export function construirFila(parametros: ParametrosConstruirFila): FilaTablero 
         feature: recortarParaNotion(documento.titulo),
         slug: documento.slug,
         estado,
-        progreso: `${hechas}/${total} tareas`,
+        progreso: TEXTOS_POR_IDIOMA[idioma].progreso(hechas, total),
         pendiente: primeraPendiente
             ? recortarParaNotion(`${primeraPendiente.id} — ${primeraPendiente.nombre}`)
             : '',
@@ -736,33 +870,55 @@ function textoRico(contenido: string): RichTextArray {
     return contenido === '' ? [] : [{ type: 'text', text: { content: contenido } }];
 }
 
-export function construirPropiedadesNotion(fila: FilaTablero): PropiedadesNotion {
+/** Valores de las propiedades de una fila, por clave interna. El estado ya
+ *  sale con su nombre visible en el idioma dado. */
+export function construirValoresPropiedades(fila: FilaTablero, idioma: Idioma = 'es'): ValoresPropiedades {
     return {
-        Feature: { title: textoRico(fila.feature) },
-        Slug: { rich_text: textoRico(fila.slug) },
-        Estado: { select: { name: fila.estado } },
-        Progreso: { rich_text: textoRico(fila.progreso) },
-        Pendiente: { rich_text: textoRico(fila.pendiente) },
-        'PRs abiertos': { rich_text: textoRico(fila.prsAbiertos) },
-        Ramas: { rich_text: textoRico(fila.ramas) },
-        'Días sin actividad': { number: fila.diasSinActividad },
-        Actualizado: { date: { start: fila.actualizado } },
-        Documento: { url: fila.documento },
-        Huella: { rich_text: textoRico(fila.huella) },
+        feature: { title: textoRico(fila.feature) },
+        slug: { rich_text: textoRico(fila.slug) },
+        estado: { select: { name: TEXTOS_POR_IDIOMA[idioma].estados[fila.estado] } },
+        progreso: { rich_text: textoRico(fila.progreso) },
+        pendiente: { rich_text: textoRico(fila.pendiente) },
+        prsAbiertos: { rich_text: textoRico(fila.prsAbiertos) },
+        ramas: { rich_text: textoRico(fila.ramas) },
+        diasSinActividad: { number: fila.diasSinActividad },
+        actualizado: { date: { start: fila.actualizado } },
+        documento: { url: fila.documento },
+        huella: { rich_text: textoRico(fila.huella) },
     };
+}
+
+/** Frontera con Notion: pasa de claves internas a los nombres visibles del
+ *  idioma, en el orden de `TIPOS_PROPIEDAD`. Las claves ausentes se omiten
+ *  (ej. la huella, que se escribe aparte al final). */
+export function traducirPropiedades(valores: Partial<ValoresPropiedades>, idioma: Idioma): PropiedadesNotionBrutas {
+    const traducidas: PropiedadesNotionBrutas = {};
+    for (const clave of CLAVES_PROPIEDAD) {
+        if (valores[clave] !== undefined) traducidas[TEXTOS_POR_IDIOMA[idioma].propiedades[clave]] = valores[clave];
+    }
+    return traducidas;
+}
+
+export function construirPropiedadesNotion<I extends Idioma = 'es'>(fila: FilaTablero, idioma?: I): PropiedadesNotion<I> {
+    const efectivo: Idioma = idioma ?? 'es';
+    return traducirPropiedades(construirValoresPropiedades(fila, efectivo), efectivo) as PropiedadesNotion<I>;
 }
 
 // ---------------------------------------------------------------------------
 // validarEsquema
 // ---------------------------------------------------------------------------
 
-// "ESQUEMA_ESPERADO" vive en el bloque "=== Ajustes por proyecto ===", cerca
-// del principio del archivo, junto a los otros dos valores que hay que tocar
-// para adaptar este script a otro repositorio.
+// Los nombres y tipos esperados ("TIPOS_PROPIEDAD", "TEXTOS_POR_IDIOMA")
+// viven en el bloque "=== Ajustes por proyecto ===", cerca del principio del
+// archivo, junto a los otros valores que hay que tocar para adaptar este
+// script a otro repositorio.
 
-export function validarEsquema(propiedadesDeLaBase: Record<string, { type: string }>): PropiedadInvalida[] {
+export function validarEsquema(
+    propiedadesDeLaBase: Record<string, { type: string }>,
+    idioma: Idioma = 'es',
+): PropiedadInvalida[] {
     const problemas: PropiedadInvalida[] = [];
-    for (const esperada of ESQUEMA_ESPERADO) {
+    for (const esperada of esquemaEsperado(idioma)) {
         const actual = propiedadesDeLaBase[esperada.nombre];
         if (!actual) {
             problemas.push({ nombre: esperada.nombre, motivo: 'faltante', tipoEsperado: esperada.tipo });
@@ -1422,15 +1578,19 @@ function extraerRichTextPlano(propiedad: unknown): string {
         .join('');
 }
 
-function extraerPaginaExistente(pagina: {
-    id: string;
-    properties: PropiedadesNotionBrutas;
-    createdTime: string;
-}): PaginaExistente {
+function extraerPaginaExistente(
+    pagina: {
+        id: string;
+        properties: PropiedadesNotionBrutas;
+        createdTime: string;
+    },
+    idioma: Idioma,
+): PaginaExistente {
+    const nombres = TEXTOS_POR_IDIOMA[idioma].propiedades;
     return {
         pageId: pagina.id,
-        slug: extraerRichTextPlano(pagina.properties?.Slug),
-        huella: extraerRichTextPlano(pagina.properties?.Huella),
+        slug: extraerRichTextPlano(pagina.properties?.[nombres.slug]),
+        huella: extraerRichTextPlano(pagina.properties?.[nombres.huella]),
         createdTime: pagina.createdTime,
     };
 }
@@ -1511,6 +1671,7 @@ function imprimirResumenFinal(log: (linea: string) => void, resumen: ResumenSinc
  *  punto donde se detectó cada problema. */
 const RAZON_ID_INVALIDO = 'el ID de la base de Notion no es válido';
 const RAZON_ESQUEMA_INVALIDO = 'el esquema de la base de Notion no coincide';
+const RAZON_IDIOMA_INVALIDO = 'el idioma del tablero (BOARD_LANGUAGE) no es válido';
 
 /** Construye y loguea el resumen de un fallo de entorno (carpeta faltante,
  *  git no disponible, clon superficial con anclas declaradas): código 1,
@@ -1559,6 +1720,31 @@ export async function sincronizar(
         dependencias.credenciales !== undefined
             ? dependencias.credenciales
             : cargarCredenciales(dependencias.raizRepo);
+
+    // El idioma se resuelve DESPUÉS de cargar el ".env" (lo hace
+    // "cargarCredenciales"), para que BOARD_LANGUAGE pueda vivir ahí también.
+    // Un valor inválido es un error de configuración, igual que un ID de base
+    // mal formado: se informa antes de cualquier llamada a git/gh o Notion.
+    const resultadoIdioma: ResultadoIdioma =
+        dependencias.idioma !== undefined
+            ? { ok: true, idioma: dependencias.idioma }
+            : resolverIdiomaTablero(process.env.BOARD_LANGUAGE);
+    if (!resultadoIdioma.ok) {
+        log(resultadoIdioma.error);
+        const resumen: ResumenSincronizacion = {
+            codigo: 1,
+            creadas: 0,
+            actualizadas: 0,
+            cuerposReescritos: 0,
+            huerfanas: [],
+            erroresDeFormato,
+            consultoNotion: false,
+            razonNoCalculado: RAZON_IDIOMA_INVALIDO,
+        };
+        imprimirResumenFinal(log, resumen);
+        return resumen;
+    }
+    const idioma = resultadoIdioma.idioma;
 
     // Una corrección posterior valida el ID de la base ANTES de cualquier
     // llamada de red — ni siquiera a git/gh — para no gastar tiempo si va a fallar igual. Se
@@ -1673,6 +1859,7 @@ export async function sincronizar(
             fechaDocumento: obtenerFechaDocumento(dependencias.ejecutar, documento.slug),
             hoy,
             ownerRepo,
+            idioma,
         }),
     );
 
@@ -1698,7 +1885,7 @@ export async function sincronizar(
 
     const dataSourceId = await cliente.obtenerDataSourceId(credenciales.databaseId);
     const esquemaActual = await cliente.obtenerEsquema(dataSourceId);
-    const problemasEsquema = validarEsquema(esquemaActual);
+    const problemasEsquema = validarEsquema(esquemaActual, idioma);
 
     if (problemasEsquema.length > 0) {
         for (const problema of problemasEsquema) {
@@ -1735,7 +1922,7 @@ export async function sincronizar(
     }
 
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
-    const paginasExistentesCrudas = paginasNotion.map(extraerPaginaExistente);
+    const paginasExistentesCrudas = paginasNotion.map((pagina) => extraerPaginaExistente(pagina, idioma));
     // Una revisión anterior detectó esto: los slugs duplicados en Notion se
     // informan (nunca se borran, nunca se sobrescriben en silencio como hacía el Map anterior).
     const { unicas: paginasExistentes, duplicadas } = resolverDuplicadosPorSlug(paginasExistentesCrudas);
@@ -1773,27 +1960,31 @@ export async function sincronizar(
     for (const fila of plan.crear) {
         const documento = documentosValidos.find((d) => d.slug === fila.slug);
         if (!documento) continue;
-        const { Huella, ...propiedadesSinHuella } = construirPropiedadesNotion(fila);
-        const pageId = await cliente.crearPagina(dataSourceId, propiedadesSinHuella, documento.tareas);
-        await cliente.actualizarPropiedades(pageId, { Huella });
+        const { huella, ...valoresSinHuella } = construirValoresPropiedades(fila, idioma);
+        const pageId = await cliente.crearPagina(
+            dataSourceId,
+            traducirPropiedades(valoresSinHuella, idioma),
+            documento.tareas,
+        );
+        await cliente.actualizarPropiedades(pageId, traducirPropiedades({ huella }, idioma));
     }
 
     let cuerposReescritos = 0;
     for (const item of plan.actualizar) {
-        const propiedades = construirPropiedadesNotion(item.fila);
+        const valores = construirValoresPropiedades(item.fila, idioma);
         if (!item.reescribirCuerpo) {
             // Sin reescritura de cuerpo no hay ventana de inconsistencia:
             // todas las propiedades (Huella incluida, que no cambió) se
             // mandan juntas, como antes.
-            await cliente.actualizarPropiedades(item.pageId, propiedades);
+            await cliente.actualizarPropiedades(item.pageId, traducirPropiedades(valores, idioma));
             continue;
         }
         const documento = documentosValidos.find((d) => d.slug === item.fila.slug);
         if (!documento) continue;
-        const { Huella, ...propiedadesSinHuella } = propiedades;
-        await cliente.actualizarPropiedades(item.pageId, propiedadesSinHuella);
+        const { huella, ...valoresSinHuella } = valores;
+        await cliente.actualizarPropiedades(item.pageId, traducirPropiedades(valoresSinHuella, idioma));
         await cliente.reescribirCuerpo(item.pageId, documento.tareas);
-        await cliente.actualizarPropiedades(item.pageId, { Huella });
+        await cliente.actualizarPropiedades(item.pageId, traducirPropiedades({ huella }, idioma));
         cuerposReescritos++;
     }
 
@@ -1830,6 +2021,9 @@ Uso:
 Variables de entorno requeridas (salvo con --dry-run):
   NOTION_TOKEN
   NOTION_TABLERO_DB_ID
+
+Variables de entorno opcionales:
+  BOARD_LANGUAGE   Idioma del tablero de Notion: "es" (por defecto) o "en".
 `;
 
 function principal(argumentos: string[]): void {

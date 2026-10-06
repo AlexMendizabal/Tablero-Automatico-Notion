@@ -21,6 +21,14 @@ Sincroniza el estado de las features de un repositorio (documentos ODD en
 `odd/tasks/*.md`) hacia una base de datos de Notion, para tener un tablero
 siempre actualizado sin mantenerlo a mano.
 
+> **Idioma:** el tablero puede estar en **español o en inglés**. La variable
+> `BOARD_LANGUAGE` (`es` por defecto, o `en`) define los nombres de las
+> propiedades de Notion, los valores de estado y los textos de las filas (ver
+> [Configuración](#configuración)). Los documentos de features aceptan
+> siempre las palabras clave en los dos idiomas (`ramas` o `branches`,
+> `## Tareas` o `## Tasks`). La salida por consola del script sigue en
+> español.
+
 ## Cómo funciona
 
 1. **Documentos Markdown.** Cada feature vive en `odd/tasks/<slug>.md`, con
@@ -87,28 +95,31 @@ npm ci
    esquema, ni crear páginas, ni actualizarlas.
 2. Crear una base de datos nueva con el tipo **"Tabla - página completa"**
    ("Table - full page").
-3. Agregar estas 11 propiedades, con este **nombre y tipo exactos** (Notion
-   distingue mayúsculas, minúsculas y tildes; un nombre que no coincida se
-   reporta como propiedad faltante):
+3. Agregar estas 11 propiedades, con este **nombre y tipo exactos**, usando
+   la columna que corresponde a `BOARD_LANGUAGE` (nombres en español para
+   `es`, el valor por defecto; nombres en inglés para `en`). Notion distingue
+   mayúsculas, minúsculas y tildes; un nombre que no coincida se reporta como
+   propiedad faltante:
 
-   | Propiedad | Tipo |
-   |---|---|
-   | Feature | Title |
-   | Slug | Text (rich text) |
-   | Estado | Select |
-   | Progreso | Text (rich text) |
-   | Pendiente | Text (rich text) |
-   | PRs abiertos | Text (rich text) |
-   | Ramas | Text (rich text) |
-   | Días sin actividad | Number |
-   | Actualizado | Date |
-   | Documento | URL |
-   | Huella | Text (rich text) |
+   | Nombre en español (`es`) | Nombre en inglés (`en`) | Tipo | Significado |
+   |---|---|---|---|
+   | Feature | Feature | Title | Título de la feature |
+   | Slug | Slug | Text (rich text) | Nombre del archivo del documento |
+   | Estado | Status | Select | Estado derivado |
+   | Progreso | Progress | Text (rich text) | Progreso, p. ej. `2/3 tareas` / `2/3 tasks` |
+   | Pendiente | Pending | Text (rich text) | Próxima tarea pendiente |
+   | PRs abiertos | Open PRs | Text (rich text) | PRs abiertos |
+   | Ramas | Branches | Text (rich text) | Ramas vivas |
+   | Días sin actividad | Days inactive | Number | Días sin actividad |
+   | Actualizado | Updated | Date | Última actualización |
+   | Documento | Document | URL | Enlace al documento |
+   | Huella | Fingerprint | Text (rich text) | Huella de la lista de tareas |
 
    Si alguna de estas columnas se renombra o cambia de tipo en Notion, hay
-   que actualizar también la constante `ESQUEMA_ESPERADO` en
-   `src/sync-tablero-features.ts`. Los dos lados del contrato viven ahí y en
-   Notion, y ninguno se puede descubrir del otro automáticamente.
+   que actualizar también el diccionario `TEXTOS_POR_IDIOMA` (nombres) o
+   `TIPOS_PROPIEDAD` (tipos) en `src/sync-tablero-features.ts`. Los dos lados
+   del contrato viven ahí y en Notion, y ninguno se puede descubrir del otro
+   automáticamente.
 4. Compartir la base con la integración: abrir la base, entrar al menú `•••`
    de la esquina superior derecha → **Connections** (Conexiones) → buscar y
    agregar la integración creada en el paso 1. Sin este paso, cualquier
@@ -139,13 +150,19 @@ NOTION_TOKEN=secret_...
 NOTION_TABLERO_DB_ID=a1b2c3d4e5f67890a1b2c3d4e5f67890
 ```
 
-Dos variables opcionales, con su valor por defecto entre paréntesis, permiten
-adaptar el script a un repositorio con otra estructura:
+Variables opcionales, con su valor por defecto entre paréntesis:
 
+- `BOARD_LANGUAGE` (`es`): idioma del tablero de Notion — nombres de las
+  propiedades, valores de estado y textos de las filas. `es` para español,
+  `en` para inglés; sin definir o vacía equivale a `es`. Cualquier otro valor
+  detiene la corrida con un error claro y código de salida distinto de cero.
+  No afecta la lectura de los documentos: las palabras clave de los dos
+  idiomas se aceptan siempre. Cambiar de idioma un tablero existente implica
+  también renombrar sus columnas en Notion (ver la tabla de arriba).
 - `TABLERO_CARPETA` (`odd/tasks`): carpeta donde viven los documentos,
   relativa a la raíz del repositorio.
 - `TABLERO_RAMA_BASE` (`main`): rama base que se usa para armar el enlace de
-  la propiedad "Documento" de cada fila.
+  la propiedad "Documento" ("Document") de cada fila.
 
 ## Uso
 
@@ -196,6 +213,11 @@ faltan, el job de sincronización corta en segundos con un error explícito,
 antes de instalar nada, y nunca informa un éxito que en realidad no escribió
 nada.
 
+Para un tablero en inglés, se agrega en esa misma página, en la pestaña
+**Variables**, una **variable** de repositorio (no un secret) llamada
+`BOARD_LANGUAGE` con el valor `en`. Si no está definida, el workflow usa
+`es`.
+
 Aparte, el workflow `.github/workflows/ci.yml` ejecuta `npm run typecheck` y
 `npm test` en cada push a `main` y en cada pull request. No necesita
 credenciales.
@@ -218,44 +240,64 @@ ramas: ["docs/odd-<slug>", "feat/<slug>*"]
 - [ ] **QA1 — Prueba manual**: descripción.
 ```
 
+El mismo documento con las palabras clave en inglés se acepta igual, sea
+cual sea el valor de `BOARD_LANGUAGE`:
+
+```markdown
+---
+branches: ["docs/odd-<slug>", "feat/<slug>*"]
+---
+
+# Título legible de la feature
+
+## Tasks
+
+- [ ] **T1 — Nombre corto**: descripción.
+- [ ] **QA1 — Prueba manual**: descripción.
+```
+
 Reglas:
 
-- **`ramas`** (obligatoria, en el frontmatter): array JSON de patrones glob
-  (solo `*` como comodín) que tienen que cubrir cada rama que use la
-  feature. Una rama que no coincide con ningún patrón no cuenta para
-  "Ramas", "PRs abiertos" ni para calcular la fecha de actividad.
+- **`ramas`** o **`branches`** (obligatoria, en el frontmatter): array JSON
+  de patrones glob (solo `*` como comodín) que tienen que cubrir cada rama
+  que use la feature. Una rama que no coincide con ningún patrón no cuenta
+  para las columnas de ramas y PRs abiertos ni para calcular la fecha de
+  actividad. Se usa solo una de las dos grafías: tener ambas en el mismo
+  documento es un error de formato por clave duplicada.
 - **`commits`** (opcional): array JSON de hashes de commit **completos** (40
   caracteres hexadecimales en minúscula) hechos directo a la rama base, sin
   PR ni rama propia. Sirve de ancla de actividad para ese tipo de trabajo,
   que de otro modo no tendría ninguna fecha asociada. Requiere un clon
   completo del repositorio (sin `fetch-depth: 0`, se reporta como error de
   entorno).
-- **Una única sección `## Tareas`**: cualquier otro encabezado de nivel 2
-  cierra la sección. Tener cero, o más de una, sección `## Tareas` es un
-  error de formato.
+- **Una única sección `## Tareas` o `## Tasks`**: cualquier otro encabezado
+  de nivel 2 cierra la sección. Tener cero, o más de una, sección de tareas
+  (incluida una de cada grafía) es un error de formato.
 - **IDs `T1`, `T2`, ... para trabajo, `QA1`, `QA2`, ... para pruebas
   manuales**: el prefijo `QA` es lo único que distingue una tarea de una
   prueba manual a los efectos de derivar el estado. El ID va en negrita al
   principio del checkbox, separado del nombre por una raya (`—`, no un
   guion común); la descripción después de los dos puntos es opcional.
 - **Los bloques de código se ignoran**: un ` ```markdown ` con un ejemplo de
-  frontmatter o de sección `## Tareas` adentro no cuenta como el frontmatter
+  frontmatter o de sección de tareas adentro no cuenta como el frontmatter
   ni la sección reales del documento.
 
 Un ejemplo completo, con una tarea hecha y una pendiente más una prueba
-manual pendiente, vive en [`odd/tasks/ejemplo-feature.md`](odd/tasks/ejemplo-feature.md).
+manual pendiente, vive en [`odd/tasks/ejemplo-feature.md`](odd/tasks/ejemplo-feature.md)
+(escrito con las palabras clave en español; `branches` y `## Tasks` funcionan
+igual).
 
 ## Cómo se deriva el estado
 
-En este orden de precedencia:
+La propiedad de estado ("Estado" / "Status") toma uno de cuatro valores,
+escrito en el idioma del tablero, en este orden de precedencia:
 
-1. **Terminada**: hay al menos una tarea, todas están marcadas como hechas,
-   y no queda ningún PR abierto sobre las ramas de la feature.
-2. **QA pendiente**: quedan tareas sin hacer, y todas las que quedan sin
-   hacer son de QA (prefijo `QA`).
-3. **Sin empezar**: ninguna tarea está marcada como hecha.
-4. **En curso**: cualquier otra combinación (por ejemplo, con tareas hechas
-   y no-QA pendientes, o con todo hecho pero un PR todavía abierto).
+| Español (`es`) | Inglés (`en`) | Cuándo |
+|---|---|---|
+| **Terminada** | **Done** | Hay al menos una tarea, todas están marcadas como hechas, y no queda ningún PR abierto sobre las ramas de la feature. |
+| **QA pendiente** | **QA pending** | Quedan tareas sin hacer, y todas las que quedan sin hacer son de QA (prefijo `QA`). |
+| **Sin empezar** | **Not started** | Ninguna tarea está marcada como hecha. |
+| **En curso** | **In progress** | Cualquier otra combinación (por ejemplo, con tareas hechas y no-QA pendientes, o con todo hecho pero un PR todavía abierto). |
 
 La fecha de "Actualizado" (y de ahí "Días sin actividad") toma la más
 reciente entre: el commit de cada rama viva que coincide con los patrones, el
@@ -276,7 +318,7 @@ fecha reciente que no significa nada.
   vive solo en una máquina, son invisibles para este script.
 - Una falla a mitad de la reescritura del cuerpo de una página puede dejar
   tareas duplicadas hasta la corrida siguiente, que detecta el desajuste
-  (por la propiedad "Huella") y repara la página completa.
+  (por la propiedad "Huella" / "Fingerprint") y repara la página completa.
 - Las filas huérfanas (páginas de Notion cuyo slug ya no tiene documento) se
   informan en la salida, pero nunca se borran automáticamente.
 
