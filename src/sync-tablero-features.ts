@@ -393,13 +393,22 @@ const REGEX_FRONTMATTER_DELIM = /^---\s*$/;
  *  "commits: [...]"), generalizado desde el "ramas:" original para admitir
  *  ambas claves en cualquier orden. */
 const REGEX_CLAVE_FRONTMATTER = /^([A-Za-z_]+):\s*(.*)$/;
-const CLAVES_FRONTMATTER_VALIDAS = new Set(['ramas', 'commits']);
+/** Clave de frontmatter tal como se escribe (español o inglés, se aceptan
+ *  siempre las dos, sin importar `BOARD_LANGUAGE`) → clave canónica. Usar
+ *  las dos grafías del mismo concepto en un documento es clave duplicada. */
+const CLAVES_FRONTMATTER_VALIDAS = new Map<string, 'ramas' | 'commits'>([
+    ['ramas', 'ramas'],
+    ['branches', 'ramas'],
+    ['commits', 'commits'],
+]);
 /** Hash de commit: hexadecimal en minúscula, EXACTAMENTE 40 caracteres (hash
  *  completo). El contrato lo exige completo a propósito: uno abreviado puede
  *  volverse ambiguo cuando el repo crece. */
 const REGEX_COMMIT_HASH = /^[0-9a-f]{40}$/;
 const REGEX_TITULO = /^#\s+(.+?)\s*$/;
-const REGEX_SECCION_TAREAS = /^##\s+Tareas\s*$/;
+/** "## Tareas" o "## Tasks" (los dos idiomas, siempre). */
+const REGEX_SECCION_TAREAS = /^##\s+(Tareas|Tasks)\s*$/;
+const NOMBRE_SECCION_TAREAS = "'## Tareas' (o '## Tasks')";
 const REGEX_SECCION_NIVEL2 = /^##\s+/;
 const REGEX_INICIO_TAREA = /^- \[([ xX])\]/;
 // La descripción tras "**" es OPCIONAL: la regla normativa del contrato
@@ -457,9 +466,10 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
     const lineas = normalizarLineas(contenidoBruto);
     const dentroDeBloque = calcularLineasDentroDeBloqueCodigo(lineas);
 
-    // --- Frontmatter: admite "ramas" (obligatoria) y "commits" (opcional),
-    // una por línea, en cualquier orden. Cualquier otra clave, clave
-    // duplicada o "ramas" ausente es error de formato. ---
+    // --- Frontmatter: admite "ramas" o "branches" (obligatoria, una sola de
+    // las dos) y "commits" (opcional), una por línea, en cualquier orden.
+    // Cualquier otra clave, clave duplicada (incluidas las dos grafías de
+    // "ramas") o "ramas" ausente es error de formato. ---
     let ramas: string[] | null = null;
     let commits: string[] = [];
     let indiceFinDeFrontmatter = -1;
@@ -478,7 +488,8 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
         } else {
             indiceFinDeFrontmatter = indiceCierre;
             const cuerpo = lineas.slice(1, indiceCierre).filter((l) => l.trim() !== '');
-            const valoresPorClave = new Map<string, string>();
+            // Por clave canónica: la grafía usada (para los mensajes) y su valor.
+            const valoresPorClave = new Map<string, { clave: string; valor: string }>();
 
             for (const linea of cuerpo) {
                 const coincidencia = REGEX_CLAVE_FRONTMATTER.exec(linea);
@@ -489,42 +500,48 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                     continue;
                 }
                 const [, clave, valor] = coincidencia;
-                if (!CLAVES_FRONTMATTER_VALIDAS.has(clave)) {
+                const canonica = CLAVES_FRONTMATTER_VALIDAS.get(clave);
+                if (canonica === undefined) {
                     errores.push(
-                        `Frontmatter faltante o inválido: clave desconocida "${clave}" (solo se admiten 'ramas' y 'commits').`,
+                        `Frontmatter faltante o inválido: clave desconocida "${clave}" (solo se admiten 'ramas' (o 'branches') y 'commits').`,
                     );
                     continue;
                 }
-                if (valoresPorClave.has(clave)) {
-                    errores.push(`Frontmatter faltante o inválido: la clave "${clave}" está duplicada.`);
+                const previa = valoresPorClave.get(canonica);
+                if (previa) {
+                    errores.push(
+                        previa.clave === clave
+                            ? `Frontmatter faltante o inválido: la clave "${clave}" está duplicada.`
+                            : `Frontmatter faltante o inválido: la clave "${clave}" está duplicada ("${previa.clave}" y "${clave}" son la misma clave; usá una sola).`,
+                    );
                     continue;
                 }
-                valoresPorClave.set(clave, valor);
+                valoresPorClave.set(canonica, { clave, valor });
             }
 
-            const valorRamas = valoresPorClave.get('ramas');
-            if (valorRamas === undefined) {
+            const entradaRamas = valoresPorClave.get('ramas');
+            if (entradaRamas === undefined) {
                 errores.push(
-                    "Frontmatter faltante o inválido: falta la clave 'ramas' (array JSON de strings).",
+                    "Frontmatter faltante o inválido: falta la clave 'ramas' (o 'branches'): array JSON de strings.",
                 );
             } else {
                 try {
-                    const valor = JSON.parse(valorRamas);
+                    const valor = JSON.parse(entradaRamas.valor);
                     if (!Array.isArray(valor) || !valor.every((v) => typeof v === 'string')) {
                         errores.push(
-                            "Frontmatter faltante o inválido: 'ramas' debe ser un array de strings.",
+                            `Frontmatter faltante o inválido: '${entradaRamas.clave}' debe ser un array de strings.`,
                         );
                     } else {
                         ramas = valor;
                     }
                 } catch {
                     errores.push(
-                        "Frontmatter faltante o inválido: 'ramas' debe ser JSON válido con comillas dobles.",
+                        `Frontmatter faltante o inválido: '${entradaRamas.clave}' debe ser JSON válido con comillas dobles.`,
                     );
                 }
             }
 
-            const valorCommits = valoresPorClave.get('commits');
+            const valorCommits = valoresPorClave.get('commits')?.valor;
             if (valorCommits !== undefined) {
                 try {
                     const valor = JSON.parse(valorCommits);
@@ -562,7 +579,8 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
         errores.push("Falta el título: no se encontró un '# ' fuera de bloques de código.");
     }
 
-    // --- Sección única "## Tareas" ---
+    // --- Sección única "## Tareas" (o "## Tasks"; tener las dos es tener
+    // más de una sección de tareas) ---
     const indicesSeccionTareas: number[] = [];
     for (let i = 0; i < lineas.length; i++) {
         if (dentroDeBloque[i]) continue;
@@ -571,12 +589,14 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
 
     const tareas: TareaDocumento[] = [];
     if (indicesSeccionTareas.length === 0) {
-        errores.push("Falta la sección '## Tareas'.");
+        errores.push(`Falta la sección ${NOMBRE_SECCION_TAREAS}.`);
     } else if (indicesSeccionTareas.length > 1) {
         errores.push(
-            `Debe haber exactamente una sección '## Tareas' (se encontraron ${indicesSeccionTareas.length}, contando solo fuera de bloques de código).`,
+            `Debe haber exactamente una sección ${NOMBRE_SECCION_TAREAS} (se encontraron ${indicesSeccionTareas.length}, contando solo fuera de bloques de código).`,
         );
     } else {
+        // El encabezado tal como lo escribió el documento, para los mensajes.
+        const seccion = `## ${REGEX_SECCION_TAREAS.exec(lineas[indicesSeccionTareas[0]])?.[1] ?? 'Tareas'}`;
         const inicio = indicesSeccionTareas[0] + 1;
         let fin = lineas.length;
         for (let i = inicio; i < lineas.length; i++) {
@@ -596,7 +616,7 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
 
             const completa = REGEX_TAREA_COMPLETA.exec(linea);
             if (!completa) {
-                errores.push(`Checkbox bajo '## Tareas' sin ID válido (formato inválido): "${linea}".`);
+                errores.push(`Checkbox bajo '${seccion}' sin ID válido (formato inválido): "${linea}".`);
                 continue;
             }
             const [, checkbox, negrita, restoBruto] = completa;
@@ -614,7 +634,7 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                 const idCrudo = negrita.slice(0, posicion).trim();
                 const nombre = negrita.slice(posicion + SEPARADOR_RAYA.length).trim();
                 if (!REGEX_ID_TAREA.test(idCrudo)) {
-                    errores.push(`Checkbox bajo '## Tareas' sin ID válido: "${linea}".`);
+                    errores.push(`Checkbox bajo '${seccion}' sin ID válido: "${linea}".`);
                     continue;
                 }
                 tareas.push({
@@ -626,15 +646,15 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                 });
             } else if (negrita.includes(SEPARADOR_GUION)) {
                 errores.push(
-                    `Checkbox bajo '## Tareas' usa guion común en vez de — (raya): "${linea}".`,
+                    `Checkbox bajo '${seccion}' usa guion común en vez de — (raya): "${linea}".`,
                 );
             } else {
-                errores.push(`Checkbox bajo '## Tareas' sin ID válido: "${linea}".`);
+                errores.push(`Checkbox bajo '${seccion}' sin ID válido: "${linea}".`);
             }
         }
 
         if (candidatos === 0) {
-            errores.push("La sección '## Tareas' no tiene ninguna tarea.");
+            errores.push(`La sección '${seccion}' no tiene ninguna tarea.`);
         }
     }
 

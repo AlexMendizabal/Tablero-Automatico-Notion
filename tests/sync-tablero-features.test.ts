@@ -2884,3 +2884,99 @@ describe('sincronizar — idioma del tablero', () => {
         expect([...notionFalso.paginas.values()][0].properties.Status).toEqual({ select: { name: 'Done' } });
     });
 });
+
+// ---------------------------------------------------------------------------
+// Documentos ODD con palabras clave en inglés (independiente de BOARD_LANGUAGE)
+// ---------------------------------------------------------------------------
+
+describe('parsearDocumento — palabras clave en español o inglés', () => {
+    const commit = 'a'.repeat(40);
+    const tareasEs = ['## Tareas', '', '- [x] **T1 — Uno**: hace algo.', '- [ ] **QA1 — Smoke**: probar.'].join('\n');
+    const tareasEn = tareasEs.replace('## Tareas', '## Tasks');
+
+    test('un documento con "branches" y "## Tasks" parsea idéntico a su equivalente en español', () => {
+        const espanol = parsearDocumento(
+            'f',
+            docBase({ frontmatter: `---\nramas: ["feat/x"]\ncommits: ["${commit}"]\n---`, seccionTareas: tareasEs }),
+        );
+        const ingles = parsearDocumento(
+            'f',
+            docBase({ frontmatter: `---\nbranches: ["feat/x"]\ncommits: ["${commit}"]\n---`, seccionTareas: tareasEn }),
+        );
+
+        expect(espanol.ok).toBe(true);
+        expect(ingles).toEqual(espanol);
+    });
+
+    test.each([
+        ['ramas', '## Tasks'],
+        ['branches', '## Tareas'],
+    ])('se pueden combinar "%s" con "%s"', (clave, seccion) => {
+        const resultado = parsearDocumento(
+            'f',
+            docBase({ frontmatter: `---\n${clave}: ["feat/x"]\n---`, seccionTareas: tareasEs.replace('## Tareas', seccion) }),
+        );
+        expect(resultado.ok).toBe(true);
+        if (resultado.ok) expect(resultado.documento.ramas).toEqual(['feat/x']);
+    });
+
+    test('BOARD_LANGUAGE no cambia el parseo: "branches" se acepta con el tablero en español', async () => {
+        const resultado = await conBoardLanguage('es', async () =>
+            parsearDocumento('f', docBase({ frontmatter: '---\nbranches: ["feat/x"]\n---', seccionTareas: tareasEn })),
+        );
+        expect(resultado.ok).toBe(true);
+    });
+
+    test('"ramas" y "branches" en el mismo documento es un error de formato de clave duplicada', () => {
+        const resultado = parsearDocumento(
+            'f',
+            docBase({ frontmatter: '---\nramas: ["feat/x"]\nbranches: ["feat/y"]\n---' }),
+        );
+        expect(resultado.ok).toBe(false);
+        if (!resultado.ok) {
+            const duplicada = resultado.errores.find((e) => /duplicada/.test(e));
+            expect(duplicada).toBeDefined();
+            expect(duplicada).toContain('branches');
+            expect(duplicada).toContain('ramas');
+        }
+    });
+
+    test('"branches" repetida es un error de clave duplicada', () => {
+        const resultado = parsearDocumento(
+            'f',
+            docBase({ frontmatter: '---\nbranches: ["feat/x"]\nbranches: ["feat/y"]\n---' }),
+        );
+        expect(resultado.ok).toBe(false);
+        if (!resultado.ok) expect(resultado.errores.some((e) => /"branches".*duplicada/.test(e))).toBe(true);
+    });
+
+    test('"## Tareas" y "## Tasks" en el mismo documento: debe haber exactamente una sección de tareas', () => {
+        const resultado = parsearDocumento(
+            'f',
+            docBase({ seccionTareas: [tareasEs, '', '## Tasks', '', '- [ ] **T9 — Otra**: x.'].join('\n') }),
+        );
+        expect(resultado.ok).toBe(false);
+        if (!resultado.ok) {
+            const error = resultado.errores.find((e) => /exactamente una/.test(e));
+            expect(error).toBeDefined();
+            expect(error).toContain('## Tasks');
+        }
+    });
+
+    test('los mensajes que listan claves y secciones válidas nombran las dos grafías', () => {
+        const desconocida = parsearDocumento('f', docBase({ frontmatter: '---\nramas: []\nbranchs: []\n---' }));
+        const sinRamas = parsearDocumento('f', docBase({ frontmatter: '---\ncommits: []\n---' }));
+        const sinSeccion = parsearDocumento('f', docBase({ seccionTareas: '## Otra cosa' }));
+
+        expect([desconocida.ok, sinRamas.ok, sinSeccion.ok]).toEqual([false, false, false]);
+        if (!desconocida.ok) {
+            expect(desconocida.errores.join('\n')).toMatch(/'ramas'.*'branches'.*'commits'/);
+        }
+        if (!sinRamas.ok) {
+            expect(sinRamas.errores.join('\n')).toMatch(/'ramas'.*'branches'/);
+        }
+        if (!sinSeccion.ok) {
+            expect(sinSeccion.errores.join('\n')).toMatch(/'## Tareas'.*'## Tasks'/);
+        }
+    });
+});
