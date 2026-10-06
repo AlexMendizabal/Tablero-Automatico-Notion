@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bilingual documentation: English `README.md` and Spanish `README.es.md`,
   with badges and a demo GIF.
 - `repository`, `bugs`, `homepage` and `keywords` metadata in `package.json`.
+- Board language setting `BOARD_LANGUAGE` (`es` by default, or `en`): picks
+  the Notion property names (e.g. `Estado`/`Status`, `Huella`/`Fingerprint`),
+  status values (`Terminada`/`Done`, `QA pendiente`/`QA pending`,
+  `Sin empezar`/`Not started`, `En curso`/`In progress`) and progress text
+  (`2/3 tareas`/`2/3 tasks`). Unset or `es` keeps existing boards unchanged;
+  an invalid value is a configuration error. The sync workflow reads it from
+  the `BOARD_LANGUAGE` repository variable. `ESQUEMA_ESPERADO` is replaced by
+  the `TIPOS_PROPIEDAD` and `TEXTOS_POR_IDIOMA` settings.
+- Feature documents accept English keywords at all times: `branches` as an
+  alternative to the `ramas` frontmatter key and `## Tasks` as an alternative
+  to `## Tareas`. Using both spellings in one document is a format error.
 
 
 ## [1.0.0] - 2026-10-06
