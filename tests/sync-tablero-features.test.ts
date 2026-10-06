@@ -36,6 +36,7 @@ import {
     parsearDocumento,
     planificarSync,
     resolverDuplicadosPorSlug,
+    resolverIdiomaTablero,
     sincronizar,
     validarEsquema,
 } from '../src/sync-tablero-features';
@@ -2667,5 +2668,219 @@ describe('sincronizar — slugs duplicados en Notion se informan (fix 8 del revi
         expect(notionFalso.paginas.get('page-1')!.properties.Huella).not.toEqual(
             propiedadesMinimas('feature-x', 'h-vieja').Huella,
         );
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Idioma del tablero (BOARD_LANGUAGE): nombres, estados y textos en Notion
+// ---------------------------------------------------------------------------
+
+const ESQUEMA_CORRECTO_NOTION_EN: Record<string, { type: string }> = {
+    Feature: { type: 'title' },
+    Slug: { type: 'rich_text' },
+    Status: { type: 'select' },
+    Progress: { type: 'rich_text' },
+    Pending: { type: 'rich_text' },
+    'Open PRs': { type: 'rich_text' },
+    Branches: { type: 'rich_text' },
+    'Days inactive': { type: 'number' },
+    Updated: { type: 'date' },
+    Document: { type: 'url' },
+    Fingerprint: { type: 'rich_text' },
+};
+
+/** Corre `fn` con BOARD_LANGUAGE fijado (o borrado si `valor` es undefined)
+ *  y restaura el valor previo al terminar, pase lo que pase. */
+async function conBoardLanguage<T>(valor: string | undefined, fn: () => Promise<T>): Promise<T> {
+    const previo = process.env.BOARD_LANGUAGE;
+    if (valor === undefined) delete process.env.BOARD_LANGUAGE;
+    else process.env.BOARD_LANGUAGE = valor;
+    try {
+        return await fn();
+    } finally {
+        if (previo === undefined) delete process.env.BOARD_LANGUAGE;
+        else process.env.BOARD_LANGUAGE = previo;
+    }
+}
+
+describe('resolverIdiomaTablero', () => {
+    test.each([undefined, '', '   ', 'es', 'ES', ' es '])('"%s" resuelve a "es" (valor por defecto)', (valor) => {
+        expect(resolverIdiomaTablero(valor)).toEqual({ ok: true, idioma: 'es' });
+    });
+
+    test.each(['en', 'EN', ' en '])('"%s" resuelve a "en"', (valor) => {
+        expect(resolverIdiomaTablero(valor)).toEqual({ ok: true, idioma: 'en' });
+    });
+
+    test('un valor desconocido es un error que nombra la variable, el valor y los valores admitidos', () => {
+        const resultado = resolverIdiomaTablero('xx');
+        expect(resultado.ok).toBe(false);
+        if (!resultado.ok) {
+            expect(resultado.error).toContain('BOARD_LANGUAGE');
+            expect(resultado.error).toContain('"xx"');
+            expect(resultado.error).toContain('"es"');
+            expect(resultado.error).toContain('"en"');
+        }
+    });
+});
+
+describe('idioma del tablero — núcleo puro', () => {
+    test('construirPropiedadesNotion en inglés usa los 11 nombres en inglés y el estado traducido', () => {
+        const propiedades = construirPropiedadesNotion(filaBase({ progreso: '1/2 tasks' }), 'en');
+
+        expect(Object.keys(propiedades)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_EN));
+        expect(propiedades.Feature.title[0].text.content).toBe('Feature X');
+        expect(propiedades.Status.select.name).toBe('In progress');
+        expect(propiedades.Progress.rich_text[0].text.content).toBe('1/2 tasks');
+        expect(propiedades.Pending.rich_text[0].text.content).toBe('T2 — Dos');
+        expect(propiedades['Open PRs'].rich_text[0].text.content).toBe('#1');
+        expect(propiedades.Branches.rich_text[0].text.content).toBe('feat/x');
+        expect(propiedades['Days inactive'].number).toBe(5);
+        expect(propiedades.Updated.date.start).toBe('2026-09-01T00:00:00.000Z');
+        expect(propiedades.Document.url).toBe('https://github.com/owner/repo/blob/master/odd/tasks/feature-x.md');
+        expect(propiedades.Fingerprint.rich_text[0].text.content).toBe('abc123');
+    });
+
+    test('sin idioma (o "es"), construirPropiedadesNotion conserva los nombres en español en el mismo orden', () => {
+        const porDefecto = construirPropiedadesNotion(filaBase());
+        expect(Object.keys(porDefecto)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION));
+        expect(construirPropiedadesNotion(filaBase(), 'es')).toEqual(porDefecto);
+        expect(porDefecto.Estado.select.name).toBe('En curso');
+    });
+
+    test.each([
+        ['Terminada', 'Done'],
+        ['QA pendiente', 'QA pending'],
+        ['Sin empezar', 'Not started'],
+        ['En curso', 'In progress'],
+    ] as const)('el estado "%s" se escribe como "%s" en inglés', (estado, enIngles) => {
+        expect(construirPropiedadesNotion(filaBase({ estado }), 'en').Status.select.name).toBe(enIngles);
+        expect(construirPropiedadesNotion(filaBase({ estado }), 'es').Estado.select.name).toBe(estado);
+    });
+
+    test('validarEsquema en inglés acepta el esquema en inglés y rechaza el español', () => {
+        expect(validarEsquema(ESQUEMA_CORRECTO_NOTION_EN, 'en')).toEqual([]);
+        const problemas = validarEsquema(ESQUEMA_CORRECTO_NOTION, 'en');
+        expect(problemas).toContainEqual(expect.objectContaining({ nombre: 'Status', motivo: 'faltante' }));
+        expect(problemas).toContainEqual(expect.objectContaining({ nombre: 'Fingerprint', motivo: 'faltante' }));
+        expect(validarEsquema(ESQUEMA_CORRECTO_NOTION_EN)).toContainEqual(
+            expect.objectContaining({ nombre: 'Estado', motivo: 'faltante' }),
+        );
+    });
+
+    test('construirFila en inglés escribe el progreso como "N/M tasks"', () => {
+        const parametros = {
+            documento: {
+                slug: 'feature-x',
+                ramas: [],
+                commits: [],
+                titulo: 'Feature X',
+                tareas: [tarea({ id: 'T1', hecha: true }), tarea({ id: 'T2' })],
+            },
+            todasLasRamas: [],
+            todosLosPRs: [],
+            fechaDocumento: null,
+            hoy: new Date('2026-09-21T00:00:00Z'),
+            ownerRepo: 'owner/repo',
+        };
+        expect(construirFila({ ...parametros, idioma: 'en' }).progreso).toBe('1/2 tasks');
+        expect(construirFila({ ...parametros, idioma: 'es' }).progreso).toBe('1/2 tareas');
+        expect(construirFila(parametros).progreso).toBe('1/2 tareas');
+    });
+});
+
+describe('sincronizar — idioma del tablero', () => {
+    const ejecutar = crearEjecutarFalso({ ramas: '', prs: '[]', ownerRepo: 'owner/repo' });
+    const hoy = new Date('2026-09-21T00:00:00Z');
+
+    function correr(
+        notionFalso: ReturnType<typeof crearNotionFalsoCompleto>,
+        extra: { log?: (linea: string) => void; idioma?: 'es' | 'en' } = {},
+    ) {
+        return sincronizar(
+            { dryRun: false },
+            {
+                raizRepo: '/repo',
+                ejecutar,
+                fetchInyectado: notionFalso.fetchFalso,
+                listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                credenciales: { token: 'tok', databaseId: notionFalso.databaseId },
+                hoy,
+                ...extra,
+            },
+        );
+    }
+
+    test('BOARD_LANGUAGE=en: valida el esquema en inglés, escribe propiedades y estado en inglés y relee Slug/Fingerprint', async () => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION_EN);
+
+        const primera = await conBoardLanguage('en', () => correr(notionFalso));
+        expect(primera.codigo).toBe(0);
+        expect(primera.creadas).toBe(1);
+
+        const pagina = [...notionFalso.paginas.values()][0];
+        expect(Object.keys(pagina.properties).sort()).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_EN).sort());
+        expect(pagina.properties.Status).toEqual({ select: { name: 'Done' } });
+        expect(pagina.properties.Progress).toEqual({ rich_text: [{ type: 'text', text: { content: '1/1 tasks' } }] });
+        expect(pagina.properties.Estado).toBeUndefined();
+
+        // La 2da corrida encuentra la página por "Slug" y compara "Fingerprint":
+        // nada que crear ni cuerpo que reescribir.
+        const segunda = await conBoardLanguage('en', () => correr(notionFalso));
+        expect(segunda.creadas).toBe(0);
+        expect(segunda.actualizadas).toBe(1);
+        expect(segunda.cuerposReescritos).toBe(0);
+    });
+
+    test('BOARD_LANGUAGE=en contra una base con columnas en español: esquema inválido, código 1, nada escrito', async () => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const lineas: string[] = [];
+        const resumen = await conBoardLanguage('en', () => correr(notionFalso, { log: (l) => lineas.push(l) }));
+        expect(resumen.codigo).toBe(1);
+        expect(notionFalso.llamadas.crearPagina).toBe(0);
+        expect(lineas.join('\n')).toContain('Falta la propiedad "Status"');
+    });
+
+    test.each([undefined, ''])('BOARD_LANGUAGE=%p: escribe con los nombres y estados en español', async (valor) => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const resumen = await conBoardLanguage(valor, () => correr(notionFalso));
+        expect(resumen.codigo).toBe(0);
+        const pagina = [...notionFalso.paginas.values()][0];
+        expect(pagina.properties.Estado).toEqual({ select: { name: 'Terminada' } });
+        expect(pagina.properties.Progreso).toEqual({ rich_text: [{ type: 'text', text: { content: '1/1 tareas' } }] });
+    });
+
+    test('BOARD_LANGUAGE inválido: código 1, mensaje claro y ninguna llamada de red ni a git', async () => {
+        const fetchEspiado = jest.fn();
+        const ejecutarEspiado = jest.fn();
+        const lineas: string[] = [];
+        const resumen = await conBoardLanguage('xx', () =>
+            sincronizar(
+                { dryRun: true },
+                {
+                    raizRepo: '/repo',
+                    ejecutar: ejecutarEspiado as unknown as EjecutarComando,
+                    fetchInyectado: fetchEspiado as unknown as FetchInyectado,
+                    listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                    credenciales: null,
+                    hoy,
+                    log: (linea) => lineas.push(linea),
+                },
+            ),
+        );
+        expect(resumen.codigo).toBe(1);
+        expect(fetchEspiado).not.toHaveBeenCalled();
+        expect(ejecutarEspiado).not.toHaveBeenCalled();
+        const salida = lineas.join('\n');
+        expect(salida).toContain('BOARD_LANGUAGE');
+        expect(salida).toContain('"xx"');
+        expect(salida).toMatch(/plan de escritura.*no calculado.*idioma/i);
+    });
+
+    test('el idioma inyectado en las dependencias tiene prioridad sobre BOARD_LANGUAGE', async () => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION_EN);
+        const resumen = await conBoardLanguage('xx', () => correr(notionFalso, { idioma: 'en' }));
+        expect(resumen.codigo).toBe(0);
+        expect([...notionFalso.paginas.values()][0].properties.Status).toEqual({ select: { name: 'Done' } });
     });
 });
