@@ -1,247 +1,294 @@
-# Tablero de features en Notion
+<h1 align="center">Notion Feature Board</h1>
 
-Sincroniza el estado de las features de un repositorio (documentos ODD en
-`odd/tasks/*.md`) hacia una base de datos de Notion, para tener un tablero
-siempre actualizado sin mantenerlo a mano.
+<p align="center">
+  A Notion board that keeps itself up to date from your repository's feature documents.
+</p>
 
-## Qué hace y por qué
+<p align="center">
+  <a href="https://github.com/AlexMendizabal/Tablero-Automatico-Notion/actions/workflows/ci.yml"><img src="https://github.com/AlexMendizabal/Tablero-Automatico-Notion/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node.js >= 22">
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome"></a>
+</p>
 
-Cada documento `odd/tasks/<slug>.md` describe una feature: su lista de
-tareas, las ramas y (opcionalmente) los commits asociados. Este script lee
-todos esos documentos, calcula una fila por feature y la sincroniza (alta o
-actualización, nunca borrado) contra una base de Notion.
+<p align="center">
+  <strong>English</strong> · <a href="README.es.md">Español</a>
+</p>
 
-Ideas centrales:
+<p align="center"><img src="docs/assets/demo.gif" alt="Demo: odd/tasks documents are synced as rows of a Notion board" width="800"></p>
 
-- **Una fila por feature, nunca a mano.** El estado, el progreso, la tarea
-  pendiente, los PRs abiertos, las ramas vivas y los días sin actividad se
-  calculan a partir de los documentos y de GitHub (`git` y `gh`). Esos campos
-  no se editan directamente en Notion: la corrida siguiente los pisa.
-- **El estado se deriva, nunca se escribe a mano.** No hay una columna donde
-  se escriba "En curso" o "Terminada": sale de las tareas marcadas, de si
-  quedan PRs abiertos, y de nada más (ver más abajo "Cómo se deriva el
-  estado").
-- **La vista de estancadas.** Con "Días sin actividad" como columna
-  ordenable, la base de Notion se puede filtrar u ordenar para ver primero
-  las features que llevan más tiempo sin movimiento. Sin ese número, esas
-  features quedan escondidas entre las demás.
-- **Nunca borra.** Una página de Notion cuyo slug ya no tiene documento
-  correspondiente se informa como "huérfana" en la salida, pero no se
-  elimina: borrar es una decisión humana.
+Syncs the status of a repository's features (ODD documents in
+`odd/tasks/*.md`) into a Notion database, so you get a board that is always
+up to date without maintaining it by hand.
 
-## Requisitos
+> **Note on naming:** the project was written in Spanish. The Notion property
+> names, status values and document keywords (`Estado`, `Terminada`, `ramas`,
+> `## Tareas`, ...) are identifiers the script requires, so they are kept in
+> Spanish in this README too. English translations are given in parentheses
+> where useful.
 
-- Node.js 22 o superior.
-- `git`, con el repositorio clonado completo (`fetch-depth: 0` en CI): un
-  clon superficial no tiene las fechas de commit ni las ramas remotas
-  completas que este script necesita.
-- El CLI [`gh`](https://cli.github.com/) autenticado (`gh auth login`): el
-  script lee los pull requests del repositorio con `gh pr list`, no con la
-  API de GitHub directamente.
+## How it works
 
-## Instalación
+1. **Markdown documents.** Each feature lives in `odd/tasks/<slug>.md`, with
+   its task list as checkboxes and the patterns of the branches it uses.
+2. **Sync.** The script reads every document, asks `git` and `gh` for
+   branches, pull requests and dates, and computes one row per feature
+   (status, progress, next pending task, days without activity).
+3. **Notion board.** Each row is created or updated in the Notion database;
+   nothing is ever deleted.
+
+```mermaid
+flowchart LR
+    A["odd/tasks/*.md"] --> C["sync-tablero-features.ts"]
+    B["git + gh<br/>(branches, PRs, dates)"] --> C
+    C -->|"create or update,<br/>never delete"| D[("Notion database")]
+```
+
+## What it does and why
+
+Each `odd/tasks/<slug>.md` document describes a feature: its task list, its
+branches and (optionally) its associated commits. The script reads all those
+documents, computes one row per feature and syncs it (create or update, never
+delete) against a Notion database.
+
+Core ideas:
+
+- **One row per feature, never by hand.** Status, progress, the next pending
+  task, open PRs, live branches and days without activity are computed from
+  the documents and from GitHub (`git` and `gh`). Those fields are not edited
+  directly in Notion: the next run overwrites them.
+- **Status is derived, never typed.** There is no column where someone writes
+  "In progress" or "Done": it comes from the checked tasks and from whether
+  there are open PRs, and nothing else (see
+  [How the status is derived](#how-the-status-is-derived)).
+- **The stalled view.** With "Días sin actividad" (days without activity) as
+  a sortable column, the Notion database can be filtered or sorted to show
+  first the features that have gone the longest without movement. Without
+  that number, those features stay hidden among the rest.
+- **Never deletes.** A Notion page whose slug no longer has a matching
+  document is reported as an "orphan" in the output, but it is not removed:
+  deleting is a human decision.
+
+## Requirements
+
+- Node.js 22 or later.
+- `git`, with a full clone of the repository (`fetch-depth: 0` in CI): a
+  shallow clone lacks the commit dates and the complete remote branches this
+  script needs.
+- The [`gh`](https://cli.github.com/) CLI, authenticated (`gh auth login`):
+  the script reads the repository's pull requests with `gh pr list`, not
+  through the GitHub API directly.
+
+## Installation
 
 ```bash
 npm ci
 ```
 
-## Crear la base en Notion
+## Create the Notion database
 
-1. Ingresar a <https://www.notion.so/developers> y crear una **integración
-   interna** para el workspace, con capacidades de **lectura, actualización
-   e inserción de contenido**. Sin esas tres, el script no puede leer el
-   esquema, ni crear páginas, ni actualizarlas.
-2. Crear una base de datos nueva con el tipo **"Tabla - página completa"**
-   ("Table - full page").
-3. Agregar estas 11 propiedades, con este **nombre y tipo exactos** (Notion
-   distingue mayúsculas, minúsculas y tildes; un nombre que no coincida se
-   reporta como propiedad faltante):
+1. Go to <https://www.notion.so/developers> and create an **internal
+   integration** for the workspace, with the **read, update and insert
+   content** capabilities. Without all three, the script cannot read the
+   schema, create pages or update them.
+2. Create a new database of type **"Table - full page"**.
+3. Add these 11 properties with these **exact names and types**. The names
+   are Spanish identifiers the script looks for, so they must be created
+   exactly as written (Notion is case- and accent-sensitive; a name that does
+   not match is reported as a missing property):
 
-   | Propiedad | Tipo |
-   |---|---|
-   | Feature | Title |
-   | Slug | Text (rich text) |
-   | Estado | Select |
-   | Progreso | Text (rich text) |
-   | Pendiente | Text (rich text) |
-   | PRs abiertos | Text (rich text) |
-   | Ramas | Text (rich text) |
-   | Días sin actividad | Number |
-   | Actualizado | Date |
-   | Documento | URL |
-   | Huella | Text (rich text) |
+   | Property | Type | Meaning |
+   |---|---|---|
+   | Feature | Title | Feature title |
+   | Slug | Text (rich text) | Document file name |
+   | Estado | Select | Status |
+   | Progreso | Text (rich text) | Progress |
+   | Pendiente | Text (rich text) | Next pending task |
+   | PRs abiertos | Text (rich text) | Open PRs |
+   | Ramas | Text (rich text) | Branches |
+   | Días sin actividad | Number | Days without activity |
+   | Actualizado | Date | Last updated |
+   | Documento | URL | Link to the document |
+   | Huella | Text (rich text) | Fingerprint of the task list |
 
-   Si alguna de estas columnas se renombra o cambia de tipo en Notion, hay
-   que actualizar también la constante `ESQUEMA_ESPERADO` en
-   `src/sync-tablero-features.ts`. Los dos lados del contrato viven ahí y en
-   Notion, y ninguno se puede descubrir del otro automáticamente.
-4. Compartir la base con la integración: abrir la base, entrar al menú `•••`
-   de la esquina superior derecha → **Connections** (Conexiones) → buscar y
-   agregar la integración creada en el paso 1. Sin este paso, cualquier
-   llamada del script devuelve un error de permisos aunque el token sea
-   válido.
-5. Obtener el ID de la base desde su URL. Al abrir la base en el navegador,
-   la URL se ve más o menos así:
+   If any of these columns is renamed or changes type in Notion, the
+   `ESQUEMA_ESPERADO` constant in `src/sync-tablero-features.ts` must be
+   updated too. The two sides of the contract live there and in Notion, and
+   neither can be discovered from the other automatically.
+4. Share the database with the integration: open the database, open the
+   `•••` menu in the top-right corner → **Connections** → find and add the
+   integration created in step 1. Without this step, every call from the
+   script returns a permissions error even if the token is valid.
+5. Get the database ID from its URL. When you open the database in the
+   browser, the URL looks roughly like this:
 
    ```
-   https://www.notion.so/miworkspace/Tablero-de-features-a1b2c3d4e5f67890a1b2c3d4e5f67890?v=...
+   https://www.notion.so/myworkspace/Tablero-de-features-a1b2c3d4e5f67890a1b2c3d4e5f67890?v=...
    ```
 
-   El ID son los **32 caracteres hexadecimales** que aparecen justo antes del
-   `?` (en el ejemplo, `a1b2c3d4e5f67890a1b2c3d4e5f67890`). También se puede
-   pegar la URL completa tal cual: `normalizarIdBaseNotion` la reconoce y
-   descarta el `?v=...`, que identifica la VISTA, no la base. **No** sirve la
-   opción "Copy data source ID" del menú de Notion: ese ID pertenece a un
-   objeto distinto de la API (el "data source", una capa que Notion agregó
-   en 2025 dentro de cada base) y no es lo que este script espera en
-   `NOTION_TABLERO_DB_ID`.
+   The ID is the **32 hexadecimal characters** right before the `?` (in the
+   example, `a1b2c3d4e5f67890a1b2c3d4e5f67890`). You can also paste the full
+   URL as is: `normalizarIdBaseNotion` recognizes it and drops the `?v=...`,
+   which identifies the VIEW, not the database. The **"Copy data source ID"**
+   option in Notion's menu does **not** work: that ID belongs to a different
+   API object (the "data source", a layer Notion added inside each database
+   in 2025) and is not what this script expects in `NOTION_TABLERO_DB_ID`.
 
-## Configuración
+## Configuration
 
-Copiar `.env.example` a `.env` y completar las dos variables obligatorias:
+Copy `.env.example` to `.env` and fill in the two required variables:
 
 ```bash
 NOTION_TOKEN=secret_...
 NOTION_TABLERO_DB_ID=a1b2c3d4e5f67890a1b2c3d4e5f67890
 ```
 
-Dos variables opcionales, con su valor por defecto entre paréntesis, permiten
-adaptar el script a un repositorio con otra estructura:
+Two optional variables, with their default value in parentheses, adapt the
+script to a repository with a different layout:
 
-- `TABLERO_CARPETA` (`odd/tasks`): carpeta donde viven los documentos,
-  relativa a la raíz del repositorio.
-- `TABLERO_RAMA_BASE` (`main`): rama base que se usa para armar el enlace de
-  la propiedad "Documento" de cada fila.
+- `TABLERO_CARPETA` (`odd/tasks`): folder where the documents live, relative
+  to the repository root.
+- `TABLERO_RAMA_BASE` (`main`): base branch used to build the link in each
+  row's "Documento" property.
 
-## Uso
+## Usage
 
-**`npm run sync:dry` sin credenciales** (sin `.env`, o con `.env` incompleto):
-no se hace ninguna llamada de red a Notion ni a GitHub más que las de
-`git`/`gh` para calcular las filas. Imprime, por cada documento válido, la
-fila que se calcularía (slug, estado, progreso, PRs abiertos, días sin
-actividad, fecha de actualización) y termina con `Errores de formato: N`. Es
-el modo que usa el job de validación en pull requests: nunca imprime
-contadores de Notion ("Creadas:", "Actualizaría:", etc.), porque esos números
-no se calcularon.
+**`npm run sync:dry` without credentials** (no `.env`, or an incomplete one):
+no network calls are made to Notion, nor to GitHub beyond the `git`/`gh`
+calls needed to compute the rows. For each valid document it prints the row
+that would be computed (slug, status, progress, open PRs, days without
+activity, update date) and ends with `Errores de formato: N` (format errors).
+This is the mode used by the pull request validation job: it never prints
+Notion counters ("Creadas:", "Actualizaría:", etc.), because those numbers
+were not computed.
 
-**`npm run sync:dry` con credenciales**: además de lo anterior, consulta
-Notion en modo lectura (esquema, páginas existentes) y muestra el plan
-completo — cuántas páginas crearía, cuántas actualizaría, a cuántas les
-reescribiría el cuerpo, y cuáles quedarían huérfanas — sin escribir nada
-todavía.
+**`npm run sync:dry` with credentials**: on top of the above, it queries
+Notion read-only (schema, existing pages) and shows the full plan — how many
+pages it would create, how many it would update, how many would get their
+body rewritten, and which would be orphaned — without writing anything yet.
 
-**`npm run sync`**: ejecuta la sincronización real contra Notion. Termina con
-código de salida distinto de cero si hubo algún error de formato en un
-documento o algún slug duplicado en Notion, aunque el resto de las features
-se haya sincronizado sin problemas.
+**`npm run sync`**: runs the real sync against Notion. It exits with a
+non-zero code if any document had a format error or any slug is duplicated
+in Notion, even if the rest of the features synced without problems.
 
-## Automatización
+## Automation
 
-> En este repositorio plantilla el workflow está **desactivado**, para que no
-> aparezca en rojo sin credenciales. Al adoptarlo, se activa en la pestaña
-> Actions después de cargar los dos secrets.
+> In this template repository the workflow is **disabled**, so it does not
+> show up red without credentials. When adopting it, enable it in the
+> Actions tab after adding the two secrets.
 
-El workflow `.github/workflows/sync-tablero-notion.yml` corre en cuatro
-disparadores:
+The `.github/workflows/sync-tablero-notion.yml` workflow runs on four
+triggers:
 
-1. **`push`** a la rama base, cuando cambia algo relevante (un documento en
-   `odd/tasks/`, el propio script, el workflow, o `package.json`/
-   `package-lock.json`): sincroniza de verdad.
-2. **`pull_request`** sobre esos mismos caminos: solo valida el formato de
-   los documentos (`sync:dry`, sin credenciales), para cortar con un PR en
-   rojo antes del merge si algún documento quedó mal formado.
-3. **`schedule`** (cron diario): un push por sí solo no alcanza para
-   mantener el tablero al día, porque "Días sin actividad" cambia con el
-   solo paso del tiempo y el merge de un PR no siempre toca un documento.
-   Sin esta corrida diaria, el tablero se congela entre ediciones.
-4. **`workflow_dispatch`**: para forzar una corrida manual.
+1. **`push`** to the base branch, when something relevant changes (a
+   document in `odd/tasks/`, the script itself, the workflow, or
+   `package.json`/`package-lock.json`): performs the real sync.
+2. **`pull_request`** on those same paths: only validates the documents'
+   format (`sync:dry`, without credentials), so a PR fails before merge if a
+   document is malformed.
+3. **`schedule`** (daily cron): a push alone is not enough to keep the board
+   current, because "Días sin actividad" changes with the mere passage of
+   time and merging a PR does not always touch a document. Without this daily
+   run, the board freezes between edits.
+4. **`workflow_dispatch`**: to force a manual run.
 
-Necesita dos secrets configurados en el repositorio (**Settings → Secrets
-and variables → Actions**): `NOTION_TOKEN` y `NOTION_TABLERO_DB_ID`. Si
-faltan, el job de sincronización corta en segundos con un error explícito,
-antes de instalar nada, y nunca informa un éxito que en realidad no escribió
-nada.
+It needs two secrets configured in the repository (**Settings → Secrets and
+variables → Actions**): `NOTION_TOKEN` and `NOTION_TABLERO_DB_ID`. If they
+are missing, the sync job stops within seconds with an explicit error, before
+installing anything, and never reports a success that did not actually write
+anything.
 
-## Contrato del formato del documento
+Separately, the `.github/workflows/ci.yml` workflow runs `npm run typecheck`
+and `npm test` on every push to `main` and every pull request. It needs no
+credentials.
 
-Cada documento vive en `<TABLERO_CARPETA>/<slug>.md` y tiene esta forma
-mínima:
+## Document format contract
+
+Each document lives at `<TABLERO_CARPETA>/<slug>.md` and has this minimal
+shape:
 
 ```markdown
 ---
 ramas: ["docs/odd-<slug>", "feat/<slug>*"]
 ---
 
-# Título legible de la feature
+# Human-readable feature title
 
 ## Tareas
 
-- [ ] **T1 — Nombre corto**: descripción.
-- [ ] **QA1 — Prueba manual**: descripción.
+- [ ] **T1 — Short name**: description.
+- [ ] **QA1 — Manual test**: description.
 ```
 
-Reglas:
+Rules:
 
-- **`ramas`** (obligatoria, en el frontmatter): array JSON de patrones glob
-  (solo `*` como comodín) que tienen que cubrir cada rama que use la
-  feature. Una rama que no coincide con ningún patrón no cuenta para
-  "Ramas", "PRs abiertos" ni para calcular la fecha de actividad.
-- **`commits`** (opcional): array JSON de hashes de commit **completos** (40
-  caracteres hexadecimales en minúscula) hechos directo a la rama base, sin
-  PR ni rama propia. Sirve de ancla de actividad para ese tipo de trabajo,
-  que de otro modo no tendría ninguna fecha asociada. Requiere un clon
-  completo del repositorio (sin `fetch-depth: 0`, se reporta como error de
-  entorno).
-- **Una única sección `## Tareas`**: cualquier otro encabezado de nivel 2
-  cierra la sección. Tener cero, o más de una, sección `## Tareas` es un
-  error de formato.
-- **IDs `T1`, `T2`, ... para trabajo, `QA1`, `QA2`, ... para pruebas
-  manuales**: el prefijo `QA` es lo único que distingue una tarea de una
-  prueba manual a los efectos de derivar el estado. El ID va en negrita al
-  principio del checkbox, separado del nombre por una raya (`—`, no un
-  guion común); la descripción después de los dos puntos es opcional.
-- **Los bloques de código se ignoran**: un ` ```markdown ` con un ejemplo de
-  frontmatter o de sección `## Tareas` adentro no cuenta como el frontmatter
-  ni la sección reales del documento.
+- **`ramas`** (branches; required, in the frontmatter): JSON array of glob
+  patterns (only `*` as wildcard) that must cover every branch the feature
+  uses. A branch that matches no pattern does not count towards "Ramas",
+  "PRs abiertos" or the activity date.
+- **`commits`** (optional): JSON array of **full** commit hashes (40
+  lowercase hexadecimal characters) made directly on the base branch, with no
+  PR or branch of their own. They act as activity anchors for that kind of
+  work, which would otherwise have no associated date. Requires a full clone
+  of the repository (without `fetch-depth: 0` it is reported as an
+  environment error).
+- **A single `## Tareas` (tasks) section**: any other level-2 heading closes
+  the section. Having zero, or more than one, `## Tareas` section is a format
+  error.
+- **IDs `T1`, `T2`, ... for work, `QA1`, `QA2`, ... for manual tests**: the
+  `QA` prefix is the only thing that distinguishes a task from a manual test
+  when deriving the status. The ID goes in bold at the start of the checkbox,
+  separated from the name by an em dash (`—`, not a regular hyphen); the
+  description after the colon is optional.
+- **Code blocks are ignored**: a ` ```markdown ` block containing an example
+  frontmatter or `## Tareas` section does not count as the document's real
+  frontmatter or section.
 
-Un ejemplo completo, con una tarea hecha y una pendiente más una prueba
-manual pendiente, vive en [`odd/tasks/ejemplo-feature.md`](odd/tasks/ejemplo-feature.md).
+A complete example, with one task done, one pending and one pending manual
+test, lives in [`odd/tasks/ejemplo-feature.md`](odd/tasks/ejemplo-feature.md).
 
-## Cómo se deriva el estado
+## How the status is derived
 
-En este orden de precedencia:
+The `Estado` (status) value is one of four, in this order of precedence:
 
-1. **Terminada**: hay al menos una tarea, todas están marcadas como hechas,
-   y no queda ningún PR abierto sobre las ramas de la feature.
-2. **QA pendiente**: quedan tareas sin hacer, y todas las que quedan sin
-   hacer son de QA (prefijo `QA`).
-3. **Sin empezar**: ninguna tarea está marcada como hecha.
-4. **En curso**: cualquier otra combinación (por ejemplo, con tareas hechas
-   y no-QA pendientes, o con todo hecho pero un PR todavía abierto).
+1. **Terminada** (done): there is at least one task, all of them are checked
+   as done, and there is no open PR on the feature's branches.
+2. **QA pendiente** (QA pending): there are unfinished tasks, and all of them
+   are QA tasks (`QA` prefix).
+3. **Sin empezar** (not started): no task is checked as done.
+4. **En curso** (in progress): any other combination (for example, with tasks
+   done and non-QA tasks pending, or with everything done but a PR still
+   open).
 
-La fecha de "Actualizado" (y de ahí "Días sin actividad") toma la más
-reciente entre: el commit de cada rama viva que coincide con los patrones, el
-momento en que se mergeó o cerró cada PR relacionado (o se abrió, si sigue
-abierto), y la fecha de cada commit ancla declarado en `commits`. A falta de
-todo eso, cae a la fecha del propio documento y, si tampoco existe, a la
-fecha de la corrida.
+The "Actualizado" (last updated) date — and from it "Días sin actividad" —
+takes the most recent of: the commit of each live branch matching the
+patterns, the moment each related PR was merged or closed (or opened, if it
+is still open), and the date of each anchor commit declared in `commits`.
+Without any of those, it falls back to the date of the document itself and,
+if that does not exist either, to the date of the run.
 
-**Nunca se usa el `updatedAt` que devuelve GitHub para un pull request.** Ese
-campo se mueve con eventos que no son trabajo real sobre la feature — por
-ejemplo, la limpieza de una rama vieja actualiza el PR mergeado semanas
-atrás — y usarlo escondería features genuinamente estancadas detrás de una
-fecha reciente que no significa nada.
+**GitHub's `updatedAt` for a pull request is never used.** That field moves
+with events that are not real work on the feature — for example, cleaning up
+an old branch updates a PR merged weeks earlier — and using it would hide
+genuinely stalled features behind a recent date that means nothing.
 
-## Límites conocidos
+## Known limitations
 
-- Solo ve lo que llegó a GitHub: un commit local sin pushear, o una rama que
-  vive solo en una máquina, son invisibles para este script.
-- Una falla a mitad de la reescritura del cuerpo de una página puede dejar
-  tareas duplicadas hasta la corrida siguiente, que detecta el desajuste
-  (por la propiedad "Huella") y repara la página completa.
-- Las filas huérfanas (páginas de Notion cuyo slug ya no tiene documento) se
-  informan en la salida, pero nunca se borran automáticamente.
+- It only sees what reached GitHub: a local commit that was not pushed, or a
+  branch that only lives on one machine, are invisible to this script.
+- A failure halfway through rewriting a page body can leave duplicated tasks
+  until the next run, which detects the mismatch (through the "Huella"
+  property) and repairs the whole page.
+- Orphan rows (Notion pages whose slug no longer has a document) are reported
+  in the output, but never deleted automatically.
 
-## Licencia
+## Contributing
 
-MIT. Ver [`LICENSE`](LICENSE).
+Issues and pull requests are welcome, in English or Spanish. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, tests and the pull request
+flow. To report a security issue, see [`SECURITY.md`](SECURITY.md). Released
+changes are listed in [`CHANGELOG.md`](CHANGELOG.md).
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
