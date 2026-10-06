@@ -24,12 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Sin empezar`/`Not started`, `En curso`/`In progress`) and progress text
   (`2/3 tareas`/`2/3 tasks`). Unset or `es` keeps existing boards unchanged;
   an invalid value is a configuration error. The sync workflow reads it from
-  the `BOARD_LANGUAGE` repository variable. `ESQUEMA_ESPERADO` is replaced by
-  the `TIPOS_PROPIEDAD` and `TEXTOS_POR_IDIOMA` settings.
+  the `BOARD_LANGUAGE` repository variable.
 - Feature documents accept English keywords at all times: `branches` as an
   alternative to the `ramas` frontmatter key and `## Tasks` as an alternative
   to `## Tareas`. Using both spellings in one document is a format error.
 
+### Changed
+
+- **Breaking for forks that customized the schema:** `ESQUEMA_ESPERADO` is
+  replaced by `TIPOS_PROPIEDAD` (property types) and `TEXTOS_POR_IDIOMA`
+  (names per language). Move any customization to those settings.
 
 ## [1.0.0] - 2026-10-06
 

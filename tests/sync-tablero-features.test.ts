@@ -41,6 +41,18 @@ import {
     validarEsquema,
 } from '../src/sync-tablero-features';
 
+// Aísla los tests del BOARD_LANGUAGE del entorno: sin esto, quien tenga
+// BOARD_LANGUAGE=en exportado en su terminal ve fallar los casos que esperan
+// el idioma por defecto (es).
+const boardLanguageOriginal = process.env.BOARD_LANGUAGE;
+beforeEach(() => {
+    delete process.env.BOARD_LANGUAGE;
+});
+afterAll(() => {
+    if (boardLanguageOriginal === undefined) delete process.env.BOARD_LANGUAGE;
+    else process.env.BOARD_LANGUAGE = boardLanguageOriginal;
+});
+
 // ---------------------------------------------------------------------------
 // Fixtures y helpers compartidos
 // ---------------------------------------------------------------------------
