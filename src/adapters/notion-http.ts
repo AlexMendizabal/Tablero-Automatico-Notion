@@ -4,7 +4,7 @@
  */
 import { mensajeDeError } from '../core/errores';
 import { recortarParaNotion } from '../core/row';
-import type { PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
+import type { PropiedadEsquemaNotion, PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
 import type { ClienteNotion, Dormir, FetchInyectado } from '../ports/notion';
 
 // ---------------------------------------------------------------------------
@@ -13,7 +13,8 @@ import type { ClienteNotion, Dormir, FetchInyectado } from '../ports/notion';
 // Formas de request/response verificadas con el MCP context7 contra
 // developers.notion.com (Notion-Version 2025-09-03):
 // - GET /v1/databases/{id} → { data_sources: [{ id, name }] } (retrieve-database).
-// - GET /v1/data_sources/{id} → { properties: {...} } (retrieve-a-data-source).
+// - GET /v1/data_sources/{id} → { properties: {...} } (retrieve-a-data-source);
+//   una propiedad relation trae { relation: { data_source_id, database_id, ... } }.
 // - POST /v1/data_sources/{id}/query, paginado con start_cursor/has_more/next_cursor
 //   (query-a-data-source).
 // - POST /v1/pages con parent {type:"data_source_id", data_source_id} (post-page,
@@ -105,7 +106,7 @@ async function leerCuerpoDeError(respuesta: { text(): Promise<string> }): Promis
  *  la API (que Notion no publica como paquete de tipos). */
 interface RespuestaNotionCruda {
     data_sources?: Array<{ id: string; name?: string }>;
-    properties?: Record<string, { type: string }>;
+    properties?: Record<string, PropiedadEsquemaNotion>;
     results?: Array<{
         id: string;
         properties?: PropiedadesNotionBrutas;

@@ -9,7 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { cargarCredenciales } from '../../src/adapters/config';
-import { AJUSTES_POR_DEFECTO, resolverAjustesProyecto } from '../../src/core/ajustes';
+import { AJUSTES_POR_DEFECTO, resolverAjustesProyecto, validarAjustesProyecto } from '../../src/core/ajustes';
 
 describe('resolverAjustesProyecto', () => {
     test('sin variables, los valores por defecto', () => {
@@ -35,6 +35,60 @@ describe('resolverAjustesProyecto', () => {
         });
         expect(resolverAjustesProyecto({ TABLERO_CARPETA: '' }).carpetaFeatures).toBe('');
         expect(resolverAjustesProyecto({ TABLERO_CARPETA_TAREAS: '' }).carpetaTareas).toBe('');
+    });
+});
+
+describe('validarAjustesProyecto', () => {
+    test('los valores por defecto y carpetas distintas son válidos', () => {
+        expect(validarAjustesProyecto(AJUSTES_POR_DEFECTO)).toBeNull();
+        expect(validarAjustesProyecto({ ...AJUSTES_POR_DEFECTO, carpetaTareas: 'odd/tasks/tareas' })).toBeNull();
+    });
+
+    test.each(['', '   ', '.', './'])('TABLERO_CARPETA_TAREAS vacía ("%s") es un error de configuración', (carpetaTareas) => {
+        expect(validarAjustesProyecto({ ...AJUSTES_POR_DEFECTO, carpetaTareas })).toBe(
+            'TABLERO_CARPETA_TAREAS está vacía: indicá la carpeta de los documentos de Tareas (por defecto, odd/tareas).',
+        );
+    });
+
+    test.each(['odd/tasks', './odd/tasks/', 'odd//tasks', 'odd\\tasks', ' odd/tasks '])(
+        'TABLERO_CARPETA_TAREAS igual a la carpeta de Features ("%s") es un error de configuración',
+        (carpetaTareas) => {
+            expect(validarAjustesProyecto({ ...AJUSTES_POR_DEFECTO, carpetaTareas })).toBe(
+                'TABLERO_CARPETA_TAREAS ("' +
+                    carpetaTareas +
+                    '") es la misma carpeta que TABLERO_CARPETA ("odd/tasks"): las Tareas necesitan su propia carpeta.',
+            );
+        },
+    );
+});
+
+describe('resolverAjustesProyecto — carpeta de Tareas por defecto igual a la de Features', () => {
+    test.each(['odd/tareas', './odd/tareas/'])(
+        'TABLERO_CARPETA="%s" sin TABLERO_CARPETA_TAREAS deshabilita las Tareas (no es un error)',
+        (carpeta) => {
+            const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: carpeta });
+
+            expect(ajustes.tareasDeshabilitadas).toBe(true);
+            expect(validarAjustesProyecto(ajustes)).toBeNull();
+        },
+    );
+
+    test('con TABLERO_CARPETA_TAREAS explícita igual a la de Features, sigue siendo un error de configuración', () => {
+        const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: 'odd/tareas', TABLERO_CARPETA_TAREAS: 'odd/tareas' });
+
+        expect(ajustes.tareasDeshabilitadas).toBeUndefined();
+        expect(validarAjustesProyecto(ajustes)).toMatch(/^TABLERO_CARPETA_TAREAS \("odd\/tareas"\) es la misma carpeta/);
+    });
+
+    test('con TABLERO_CARPETA_TAREAS explícita vacía, sigue siendo un error de configuración', () => {
+        const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: 'odd/tareas', TABLERO_CARPETA_TAREAS: '' });
+
+        expect(ajustes.tareasDeshabilitadas).toBeUndefined();
+        expect(validarAjustesProyecto(ajustes)).toMatch(/^TABLERO_CARPETA_TAREAS está vacía/);
+    });
+
+    test('con carpetas distintas, las Tareas no se deshabilitan', () => {
+        expect(resolverAjustesProyecto({ TABLERO_CARPETA: 'docs/odd' })).not.toHaveProperty('tareasDeshabilitadas');
     });
 });
 
@@ -104,6 +158,14 @@ describe('cargarCredenciales (adapters/config.ts)', () => {
             databaseId: 'base-features',
             databaseIdTareas: 'https://www.notion.so/Tareas-0123456789abcdef0123456789abcdef?v=1',
         });
+    });
+
+    test('un NOTION_TAREAS_DB_ID vacío cuenta como ausente', () => {
+        process.env.NOTION_TOKEN = 'tok';
+        process.env.NOTION_TABLERO_DB_ID = 'base-features';
+        process.env.NOTION_TAREAS_DB_ID = '';
+
+        expect(cargarCredenciales(raizSinEnv)).toEqual({ token: 'tok', databaseId: 'base-features' });
     });
 
     test('sin NOTION_TOKEN no hay credenciales, aunque NOTION_TAREAS_DB_ID esté definido', () => {

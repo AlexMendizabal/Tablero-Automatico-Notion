@@ -6,7 +6,13 @@
  */
 import type { EsquemaEntidad } from './entities/tipos';
 import type { Idioma } from './i18n';
-import type { PaginaExistente, PropiedadesNotionBrutas, PropiedadInvalida, RichTextArray } from './types';
+import type {
+    PaginaExistente,
+    PropiedadEsquemaNotion,
+    PropiedadesNotionBrutas,
+    PropiedadInvalida,
+    RichTextArray,
+} from './types';
 
 /** Claves internas de la entidad, en el orden de `tiposPropiedad`. */
 export function clavesPropiedad<C extends string, E extends string>(esquema: EsquemaEntidad<C, E>): C[] {
@@ -61,23 +67,44 @@ export function traducirPropiedadesEntidad<C extends string, E extends string>(
 // validarEsquema
 // ---------------------------------------------------------------------------
 
+/** Un ID de Notion en forma comparable: sin guiones y en minúscula (la API
+ *  los devuelve con guiones; un ID copiado de la URL no los tiene). */
+function idComparable(id: string): string {
+    return id.replace(/-/g, '').toLowerCase();
+}
+
+/**
+ * Compara el esquema esperado de la entidad con el de la base real. Además
+ * del nombre y el tipo, una propiedad `relation` cuya clave figura en
+ * `destinosRelacion` (clave → data source esperado) tiene que apuntar a ese
+ * data source (`relation.data_source_id`, Notion-Version 2025-09-03); si
+ * apunta a otro, o no dice a cuál, es `relacion-incorrecta`. Sin destino
+ * esperado para esa clave, solo se valida el tipo.
+ */
 export function validarEsquemaEntidad<C extends string, E extends string>(
     esquema: EsquemaEntidad<C, E>,
-    propiedadesDeLaBase: Record<string, { type: string }>,
+    propiedadesDeLaBase: Record<string, PropiedadEsquemaNotion>,
     idioma: Idioma = 'es',
+    destinosRelacion: Partial<Record<C, string>> = {},
 ): PropiedadInvalida[] {
     const problemas: PropiedadInvalida[] = [];
-    for (const esperada of esquemaEsperadoEntidad(esquema, idioma)) {
-        const actual = propiedadesDeLaBase[esperada.nombre];
+    for (const clave of clavesPropiedad(esquema)) {
+        const nombre = esquema.textos[idioma].propiedades[clave];
+        const tipoEsperado = esquema.tiposPropiedad[clave];
+        const actual = propiedadesDeLaBase[nombre];
         if (!actual) {
-            problemas.push({ nombre: esperada.nombre, motivo: 'faltante', tipoEsperado: esperada.tipo });
-        } else if (actual.type !== esperada.tipo) {
-            problemas.push({
-                nombre: esperada.nombre,
-                motivo: 'tipo-incorrecto',
-                tipoEsperado: esperada.tipo,
-                tipoActual: actual.type,
-            });
+            problemas.push({ nombre, motivo: 'faltante', tipoEsperado });
+            continue;
+        }
+        if (actual.type !== tipoEsperado) {
+            problemas.push({ nombre, motivo: 'tipo-incorrecto', tipoEsperado, tipoActual: actual.type });
+            continue;
+        }
+        const destinoEsperado = destinosRelacion[clave];
+        if (tipoEsperado !== 'relation' || destinoEsperado === undefined) continue;
+        const destinoActual = actual.relation?.data_source_id;
+        if (destinoActual === undefined || idComparable(destinoActual) !== idComparable(destinoEsperado)) {
+            problemas.push({ nombre, motivo: 'relacion-incorrecta', tipoEsperado, destinoEsperado, destinoActual });
         }
     }
     return problemas;

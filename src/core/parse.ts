@@ -55,6 +55,27 @@ export const FORMATO_FRONTMATTER_TAREA: FormatoFrontmatter = {
 export type ResultadoParseoConFormato =
     | { ok: true; documento: DocumentoODD; feature: string | null }
     | { ok: false; errores: string[] };
+/** Caracteres que no pueden ir en el slug de un documento: separadores de
+ *  ruta (`/`, `\`), los que un nombre de archivo de Windows no admite
+ *  (`< > : " | ? *`) y los de control (tab y saltos de línea incluidos). */
+const REGEX_CARACTER_INVALIDO_SLUG = /[/\\<>:"|?*\u0000-\u001f\u007f]/;
+
+/** `true` si `slug` puede ser el nombre de un documento sin ".md" (el slug de
+ *  un documento sale de su nombre de archivo, ver `listarDocumentosODD`): no
+ *  vacío, sin espacios al principio ni al final (adentro sí, como en
+ *  "mi feature.md"), ni "." ni "..", y sin los caracteres de
+ *  `REGEX_CARACTER_INVALIDO_SLUG`. Como "/" y "\" ya están prohibidos, un
+ *  ".." interior (ej. "a..b") no puede salir de la carpeta y es válido. */
+export function esSlugDocumentoValido(slug: string): boolean {
+    return (
+        slug.trim() !== '' &&
+        slug === slug.trim() &&
+        slug !== '.' &&
+        slug !== '..' &&
+        !REGEX_CARACTER_INVALIDO_SLUG.test(slug)
+    );
+}
+
 /** Hash de commit: hexadecimal en minúscula, EXACTAMENTE 40 caracteres (hash
  *  completo). El contrato lo exige completo a propósito: uno abreviado puede
  *  volverse ambiguo cuando el repo crece. */
@@ -240,7 +261,13 @@ export function parsearDocumentoConFormato(
                     valor = undefined;
                 }
                 if (typeof valor === 'string' && valor.trim() !== '') {
-                    feature = valor.trim();
+                    if (esSlugDocumentoValido(valor)) {
+                        feature = valor;
+                    } else {
+                        errores.push(
+                            `Frontmatter faltante o inválido: 'feature' no es un slug válido (${JSON.stringify(valor)}): debe ser el nombre de un documento de Features sin ".md", sin espacios al principio ni al final, sin "/", "\\", < > : " | ? * ni caracteres de control, y distinto de "." y "..".`,
+                        );
+                    }
                 } else {
                     errores.push(
                         "Frontmatter faltante o inválido: 'feature' debe ser un string JSON no vacío con comillas dobles (el slug de la feature padre).",

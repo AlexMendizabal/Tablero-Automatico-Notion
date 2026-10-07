@@ -1,5 +1,5 @@
 ---
-ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity*", "feat/contribuyentes*", "release/v2*"]
+ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity*", "feat/task-relation*", "feat/contribuyentes*", "release/v2*"]
 ---
 
 # Tareas avanzadas y núcleo modular
@@ -9,7 +9,7 @@ ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity
 - [x] **T1 — Separación en módulos sin cambio de comportamiento (PR 1a)**: mover el archivo único a core/ports/adapters/app/entrypoints, dividir los tests por capa y mantener idéntica la salida de sync:dry.
 - [x] **T2 — Descriptor de entidades (PR 1b)**: llevar esquema, textos, regla de estado y armado de fila a core/entities/feature.ts y orquestar con sincronizarEntidad sin renombrar columnas de Features.
 - [x] **T3 — Entidad Tarea desde el repo (PR 2)**: documentos en odd/tareas/*.md con feature padre opcional y NOTION_TAREAS_DB_ID opcional que saltea la entidad si falta.
-- [ ] **T4 — Esquema de Notion para Tareas (PR 3)**: base de Tareas con relación a Feature, Responsable (people) propiedad de Notion que nunca se escribe y Contribuyentes (multi-select).
+- [x] **T4 — Esquema de Notion para Tareas (PR 3)**: base de Tareas con relación a Feature, Responsable (people) propiedad de Notion que nunca se escribe y Contribuyentes (multi-select).
 - [ ] **T5 — Contribuyentes desde git y PRs (PR 4)**: autores de ramas, commits ancla del frontmatter, trailers Co-authored-by y autores de PR normalizados con .mailmap.
 - [ ] **T6 — Distribución pública (PR 5)**: action.yml, publicación npm, skill de documentos ODD, README es/en y versión v2.0.0.
 - [ ] **QA1 — Sincronización real contra un tablero de prueba**: correr el sync con Features y Tareas sobre bases de Notion de prueba y verificar relación, Responsable intacto y Contribuyentes.
@@ -30,7 +30,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Estrategia: PRs encadenados (1a, 1b, 2, 3, 4, 5), apilados: el PR 1a contra main y cada PR siguiente sobre la rama del anterior.
 - PR 1a: #8 (refactor/modular-core → main), mergeado en 1e85a6c.
 - PR 1b: #9 (refactor/entity-descriptor → main), mergeado.
-- PR 2: rama feat/task-entity desde main.
+- PR 2: #10 (feat/task-entity → main), mergeado. Fix de CI 0602e74: los tests aíslan GITHUB_REPOSITORY.
+- PR 3: rama feat/task-relation desde main.
 
 ## Progreso
 
@@ -42,8 +43,12 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Seguimientos de T2: resueltos en T3 (listarDocumentos recibe la carpeta del descriptor; ajustes explícitos y URL de Documento con carpetas propias).
 - T3: ruta delegada (escritor único). 8 commits 0d23141..ed3a1e3; tests 190 → 233; typecheck limpio; sin carpeta de tareas la salida de sync:dry es idéntica a la base. RED observado como error de compilación (API inexistente) en cada comportamiento nuevo; los tests de seguimiento fijan comportamiento existente (validados rompiendo la URL a propósito).
 - Revisión T3: 3 tramos de riesgo medio (8edb740..9efc5d7, ..6b0cfda, ..ed3a1e3), aprobados y confirmados.
-- Seguimientos para T4 (no bloqueantes): validar el formato del slug de `feature` antes de convertirlo en relación; test del error de lectura de odd/tareas distinto de ENOENT; los avisos de feature padre no se imprimen en los retornos tempranos por repo superficial o git ausente; test de NOTION_TAREAS_DB_ID vacío; asertar cantidad de páginas en el test de URL de Documento.
+- Seguimientos de T3: resueltos en T4 (tareas siempre validadas aunque falte NOTION_TAREAS_DB_ID; avisos en retornos tempranos; validación de carpeta de tareas y del slug padre; tests de lectura no-ENOENT, id vacío y cantidad de páginas).
+- T4: ruta delegada (escritor único). 10 commits f163b0d..689ba86; tests 233 → 294 (también con GITHUB_REPOSITORY y BOARD_LANGUAGE=en); cada commit verificado por separado. RED por aserción en cada comportamiento nuevo; los tests que fijan comportamiento existente se validaron rompiendo el código a propósito.
+- Revisión T4: tramos c57527f..54bdfb5, ..d5cfa81, ..9f762e4, conjunto ..9f762e4 y seguimientos ..689ba86, todos aprobados y confirmados. Correcciones derivadas de la revisión: slugs con espacios o puntos internos válidos; Tareas desactivadas (no error) cuando solo la carpeta por defecto coincide con la de Features.
+- Cierre de T4 tras la revisión del conjunto: README alineado con la regla real del slug (fefc0a1); una tarea nunca se vincula a una página huérfana de Features (bf69bcc); sin lista de documentos de Features no se filtran relaciones (e8c6f69). 296 tests; todo aprobado y confirmado.
+- Seguimientos para T5 (no bloqueantes): la comparación de carpetas no contempla mayúsculas/minúsculas, segmentos ".." ni rutas absolutas; el caso de lista de documentos de Features ausente con mapa de páginas presente no tiene test (hoy no es alcanzable).
 
 ## Próximo paso
 
-- PR 2 en revisión; luego T4 (relación Feature y Responsable) en una rama desde main.
+- PR 3 en revisión; luego T5 (Contribuyentes desde git y PRs) en una rama desde main.

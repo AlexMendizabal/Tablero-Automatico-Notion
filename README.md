@@ -163,7 +163,10 @@ Optional variables, with their default value in parentheses:
   advanced tasks (see [Advanced tasks](#advanced-tasks-optional)). Unset
   means tasks are not written to Notion.
 - `TABLERO_CARPETA_TAREAS` (`odd/tareas`): folder where the task documents
-  live, relative to the repository root.
+  live, relative to the repository root. If set, it cannot be empty or the
+  same folder as `TABLERO_CARPETA`: in those cases the run stops with a
+  configuration error before calling Notion. If unset and `TABLERO_CARPETA`
+  is `odd/tareas`, tasks are disabled and only features are synced.
 
 ## Usage
 
@@ -309,14 +312,30 @@ own.
    - [ ] **T1 — Short name**: description.
    ```
 
-   If `feature` names a slug with no document in `TABLERO_CARPETA`, the run
-   prints a warning ("Avisos") in the tasks summary; it is not a format error
-   and does not change the exit code. Example:
+   `feature` must be a JSON string holding a valid document slug (the file
+   name without `.md`, e.g. `feature: "mi feature"` for `mi feature.md`).
+   Inner spaces and dots are allowed; it is rejected if it is empty, has
+   leading or trailing whitespace, is exactly `.` or `..`, or contains `/`,
+   `\`, `< > : " | ? *` or control characters. A rejected value is a format
+   error of that task. If `feature` names a slug with no document in
+   `TABLERO_CARPETA`, the run prints a warning ("Avisos") in the tasks
+   summary; it is not a format error and does not change the exit code.
+   Example:
    [`odd/tareas/ejemplo-tarea.md`](odd/tareas/ejemplo-tarea.md).
 2. **Notion database**: create a second database with the **same columns as
    the board** (see [Create the Notion database](#create-the-notion-database)),
    except the title column, which is called **`Tarea`** (`es`) or **`Task`**
-   (`en`) instead of `Feature`. Share it with the same integration.
+   (`en`) instead of `Feature`, plus two columns of its own:
+
+   | Name (`es`) | Name (`en`) | Notion type | Content |
+   |---|---|---|---|
+   | Feature | Feature | Relation (to the Features database) | Page of the parent feature; empty when the task has no parent |
+   | Responsable | Assignee | Person | Assigned by hand in Notion; the sync **never** writes or overwrites it |
+
+   Share it with the same integration. The sync validates both columns: that
+   they exist with their type, and that the `Feature` relation targets the
+   Features database (`NOTION_TABLERO_DB_ID`); a relation to another database
+   is a schema error.
 3. **Configuration**: set `NOTION_TAREAS_DB_ID` to its ID or URL (same rules as
    `NOTION_TABLERO_DB_ID`). It uses the same `NOTION_TOKEN`.
 
@@ -325,9 +344,21 @@ Behavior:
 - No task folder, or no `.md` in it: tasks do nothing and the output is the
   same as before.
 - Task documents but no `NOTION_TAREAS_DB_ID`: features are synced as usual
-  and tasks are skipped with an informational line (exit code unaffected).
+  and tasks are not written to Notion (with an informational line), but their
+  documents are still validated: a format error makes the exit code non-zero
+  and parent feature warnings are printed.
+- `Feature` relation: each task points to its parent feature's page in the
+  Features database (the one that already existed or was just created). If
+  the parent has no page (for example, because its document has a format
+  error), the relation is left empty and a warning is printed.
+- If the Features sync did not finish (environment, configuration or schema
+  error), tasks are not written to Notion, with an informational line, so
+  relations are never cleared on partial information; the exit code reflects
+  the Features error.
 - `--dry-run` without credentials: after the feature rows, a second block
   labeled `Tareas:` lists the task rows, including the parent feature slug.
+- `--dry-run` with credentials: the tasks plan shows, per task, which
+  Features page its relation would point to.
 - Any error in either entity (format, schema, invalid ID) makes the exit code
   non-zero.
 

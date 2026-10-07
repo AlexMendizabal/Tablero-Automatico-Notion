@@ -2,7 +2,7 @@
  * Puerto hacia Notion: el `fetch` inyectable, el reloj de espera y el
  * cliente que usa la orquestación.
  */
-import type { PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
+import type { PropiedadEsquemaNotion, PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
 
 export type FetchInyectado = (
     url: string,
@@ -22,7 +22,9 @@ export interface Credenciales {
 
 export interface ClienteNotion {
     obtenerDataSourceId(databaseId: string): Promise<string>;
-    obtenerEsquema(dataSourceId: string): Promise<Record<string, { type: string }>>;
+    /** Propiedades del data source, por nombre visible (con el destino de
+     *  cada relación, ver `PropiedadEsquemaNotion`). */
+    obtenerEsquema(dataSourceId: string): Promise<Record<string, PropiedadEsquemaNotion>>;
     listarTodasLasPaginas(
         dataSourceId: string,
     ): Promise<Array<{ id: string; properties: PropiedadesNotionBrutas; createdTime: string }>>;

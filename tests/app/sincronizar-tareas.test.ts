@@ -9,8 +9,15 @@
  * Como en el resto de los tests de la app, los documentos son strings
  * fixture (nunca se lee `odd/` real).
  */
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import { listarDocumentosODD } from '../../src/adapters/fs-node';
 import * as app from '../../src/app/sincronizar';
+import { resolverAjustesProyecto } from '../../src/core/ajustes';
 import { crearDescriptorFeature } from '../../src/core/entities/feature';
+import { componerDependencias } from '../../src/entrypoints/cli';
 import type { FetchInyectado } from '../../src/ports/notion';
 import type { DependenciasSincronizar, EjecutarComando, RepositorioGit } from '../../src/ports/sincronizar';
 import {
@@ -20,6 +27,8 @@ import {
     crearNotionFalsoTareas,
     docBase,
     ESQUEMA_CORRECTO_NOTION,
+    ESQUEMA_CORRECTO_NOTION_TAREAS,
+    relacionConFeatures,
 } from '../helpers/fixtures';
 import { sincronizar, sincronizarEntidad } from '../helpers/sincronizar-compuesto';
 
@@ -119,6 +128,43 @@ describe('sincronizar — sin documentos de Tareas', () => {
     });
 });
 
+describe('sincronizar — carpeta de Tareas ilegible', () => {
+    let raiz: string;
+    beforeEach(() => {
+        raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'tablero-tareas-'));
+        fs.mkdirSync(path.join(raiz, 'odd', 'tasks'), { recursive: true });
+        fs.writeFileSync(path.join(raiz, 'odd', 'tasks', 'feature-x.md'), docBase());
+        // "odd/tareas" existe, pero es un archivo: no es ENOENT.
+        fs.writeFileSync(path.join(raiz, 'odd', 'tareas'), 'no soy una carpeta');
+    });
+    afterEach(() => fs.rmSync(raiz, { recursive: true, force: true }));
+
+    test('un error de lectura distinto de ENOENT es error de entorno de Tareas; Features no cambia', async () => {
+        const lineas: string[] = [];
+        const lineasSoloFeatures: string[] = [];
+        const listarDocumentos: DependenciasSincronizar['listarDocumentos'] = (carpeta, opciones) =>
+            listarDocumentosODD(raiz, carpeta, opciones);
+
+        const resumen = await app.sincronizar(
+            { dryRun: true },
+            puertosFalsos(listarDocumentos, { log: (l) => lineas.push(l) }),
+        );
+        const soloFeatures = await app.sincronizarEntidad(
+            crearDescriptorFeature(AJUSTES),
+            { dryRun: true },
+            puertosFalsos(listarDocumentos, { log: (l) => lineasSoloFeatures.push(l) }),
+        );
+
+        expect(soloFeatures.codigo).toBe(0);
+        expect(resumen.tareas?.codigo).toBe(1);
+        expect(resumen.codigo).toBe(1);
+        const inicioTareas = lineas.indexOf('Tareas:');
+        expect(lineas.slice(0, inicioTareas - 1)).toEqual(lineasSoloFeatures);
+        expect(lineas.slice(inicioTareas - 1, inicioTareas + 1)).toEqual(['', 'Tareas:']);
+        expect(lineas.slice(inicioTareas + 1)).toEqual([expect.stringMatching(/^Error de entorno: .*"odd\/tareas"/)]);
+    });
+});
+
 // ---------------------------------------------------------------------------
 // listarDocumentos recibe la carpeta de cada descriptor
 // ---------------------------------------------------------------------------
@@ -138,6 +184,74 @@ describe('sincronizar — carpeta de cada entidad', () => {
 
         expect(listarDocumentos.mock.calls).toEqual([['docs/features'], ['docs/tareas', { opcional: true }]]);
     });
+});
+
+describe('sincronizar — carpeta de Tareas inválida (TABLERO_CARPETA_TAREAS)', () => {
+    test.each([
+        ['vacía', '', /^TABLERO_CARPETA_TAREAS está vacía/],
+        ['igual a la de Features', './odd/tasks/', /^TABLERO_CARPETA_TAREAS \(".\/odd\/tasks\/"\) es la misma carpeta que TABLERO_CARPETA/],
+    ])('%s: error de configuración con código 1, antes de cualquier llamada a Notion', async (_caso, carpetaTareas, mensaje) => {
+        const lineas: string[] = [];
+        const crearClienteNotion = jest.fn();
+        const listarDocumentos = jest.fn(() => documentosFeatures());
+
+        const resumen = await app.sincronizar(
+            { dryRun: false },
+            puertosFalsos(listarDocumentos, {
+                ajustes: { ...AJUSTES, carpetaTareas },
+                credenciales: { token: 'tok', databaseId: '0123456789abcdef0123456789abcdef' },
+                crearClienteNotion,
+                log: (l) => lineas.push(l),
+            }),
+        );
+
+        expect(resumen.codigo).toBe(1);
+        expect(lineas).toHaveLength(1);
+        expect(lineas[0]).toMatch(mensaje);
+        expect(crearClienteNotion).not.toHaveBeenCalled();
+        expect(listarDocumentos).not.toHaveBeenCalled();
+    });
+});
+
+describe('sincronizar — proyecto solo de Features en la carpeta de Tareas por defecto', () => {
+    test.each([true, false])(
+        'TABLERO_CARPETA=odd/tareas sin TABLERO_CARPETA_TAREAS: Features se sincroniza igual y no hay bloque "Tareas:" (dry-run: %s)',
+        async (dryRun) => {
+            const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: 'odd/tareas' });
+            const correr = async (soloFeatures: boolean) => {
+                const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+                const lineas: string[] = [];
+                const carpetas: string[] = [];
+                const entrada = {
+                    raizRepo: '/repo',
+                    ejecutar: ejecutar(),
+                    fetchInyectado: notionFalso.fetchFalso,
+                    listarDocumentos: (carpeta: string) => {
+                        carpetas.push(carpeta);
+                        return documentosFeatures();
+                    },
+                    credenciales: dryRun ? null : { token: 'tok', databaseId: notionFalso.databaseId },
+                    hoy: HOY,
+                    ajustes,
+                    log: (l: string) => lineas.push(l),
+                };
+                const resumen: app.ResumenGeneral = soloFeatures
+                    ? await sincronizarEntidad(crearDescriptorFeature(ajustes), { dryRun }, entrada)
+                    : await app.sincronizar({ dryRun }, componerDependencias(entrada));
+                return { resumen, lineas, carpetas, paginas: notionFalso.paginas.size };
+            };
+
+            const soloFeatures = await correr(true);
+            const ambas = await correr(false);
+
+            expect(ambas.resumen.codigo).toBe(0);
+            expect(ambas.resumen.tareas).toBeUndefined();
+            expect(ambas.lineas).toEqual(soloFeatures.lineas);
+            expect(ambas.lineas).not.toContain('Tareas:');
+            expect(ambas.carpetas).toEqual(['odd/tareas']);
+            expect(ambas.paginas).toBe(dryRun ? 0 : 1);
+        },
+    );
 });
 
 // ---------------------------------------------------------------------------
@@ -239,6 +353,45 @@ describe('sincronizar — feature padre inexistente', () => {
         expect(lineas.slice(inicioTareas).some((l) => l.startsWith('tarea-x '))).toBe(true);
     });
 
+    test.each([
+        ['repositorio superficial', { superficial: true }],
+        ['git no disponible', { gitNoDisponible: true }],
+    ])('el aviso se imprime también en el retorno temprano por %s', async (_caso, entorno) => {
+        const lineas: string[] = [];
+        const sha = 'a'.repeat(40);
+        const frontmatter = ['---', 'ramas: ["feat/t*"]', `commits: ["${sha}"]`, 'feature: "no-existe"', '---'].join('\n');
+        const base = ejecutar();
+        // git solo "falla" para las Tareas (las únicas que declaran commits).
+        const ejecutarEntorno: EjecutarComando = (comando, args) =>
+            comando === 'git' && args[0] === 'rev-parse'
+                ? crearEjecutarFalso({ ...entorno })(comando, args)
+                : base(comando, args);
+
+        const resumen = await sincronizar(
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                ejecutar: ejecutarEntorno,
+                fetchInyectado: jest.fn() as unknown as FetchInyectado,
+                listarDocumentos: documentosFeatures,
+                listarDocumentosTareas: () => [{ slug: 'tarea-x', contenido: docBase({ frontmatter }) }],
+                credenciales: null,
+                hoy: HOY,
+                log: (l) => lineas.push(l),
+            },
+        );
+
+        expect(resumen.codigo).toBe(1);
+        expect(resumen.tareas?.avisos?.map((a) => a.slug)).toEqual(['tarea-x']);
+        const bloqueTareas = lineas.slice(lineas.indexOf('Tareas:'));
+        expect(bloqueTareas[1]).toMatch(/^Error de entorno: /);
+        expect(bloqueTareas.slice(2)).toEqual([
+            'Avisos: 1',
+            '  tarea-x:',
+            '    - La feature padre "no-existe" no existe: no hay ningún documento "no-existe.md" en "odd/tasks".',
+        ]);
+    });
+
     test('una tarea sin padre, o con un padre que existe, no genera avisos', async () => {
         const lineas: string[] = [];
         const resumen = await sincronizar(
@@ -288,12 +441,79 @@ describe('sincronizar — sin NOTION_TAREAS_DB_ID', () => {
 
         expect(resumen.codigo).toBe(0);
         expect(resumen.creadas).toBe(1);
-        expect(resumen.tareas).toBeUndefined();
+        expect(resumen.tareas?.codigo).toBe(0);
+        expect(resumen.tareas?.consultoNotion).toBe(false);
         expect(notionFalso.paginas.size).toBe(1);
-        expect(lineas.slice(-2)).toEqual([
+        expect(lineas.slice(lineas.indexOf('Tareas:'))).toEqual([
             'Tareas:',
             'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.',
+            'Plan de escritura: no calculado (no se consultó Notion).',
+            'Errores de formato: 0',
         ]);
+    });
+
+    test.each([false, true])(
+        'las Tareas se validan igual: un error de formato da código 1 y el aviso de padre se imprime (dry-run: %s)',
+        async (dryRun) => {
+            const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+            const lineas: string[] = [];
+
+            const resumen = await sincronizar(
+                { dryRun },
+                {
+                    raizRepo: '/repo',
+                    ejecutar: ejecutar(),
+                    fetchInyectado: notionFalso.fetchFalso,
+                    listarDocumentos: documentosFeatures,
+                    listarDocumentosTareas: () => [
+                        { slug: 'huerfana', contenido: docTarea('no-existe') },
+                        { slug: 'rota', contenido: '# sin frontmatter' },
+                    ],
+                    credenciales: { token: 'tok', databaseId: notionFalso.databaseId },
+                    hoy: HOY,
+                    log: (l) => lineas.push(l),
+                },
+            );
+
+            expect(resumen.erroresDeFormato).toEqual([]);
+            expect(resumen.tareas?.erroresDeFormato.map((e) => e.slug)).toEqual(['rota']);
+            expect(resumen.tareas?.avisos?.map((a) => a.slug)).toEqual(['huerfana']);
+            expect(resumen.codigo).toBe(1);
+            const bloqueTareas = lineas.slice(lineas.indexOf('Tareas:'));
+            expect(bloqueTareas[1]).toBe(
+                'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.',
+            );
+            expect(bloqueTareas).toEqual(
+                expect.arrayContaining(['Avisos: 1', '  huerfana:', 'Errores de formato: 1', '  rota:']),
+            );
+        },
+    );
+
+    test('un NOTION_TAREAS_DB_ID vacío cuenta como ausente: Tareas no toca Notion', async () => {
+        const features = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const tareas = crearNotionFalsoTareas();
+        const { fetchFalso, orden } = combinarNotionFalsos(features, tareas);
+        const lineas: string[] = [];
+
+        const resumen = await sincronizar(
+            { dryRun: false },
+            {
+                raizRepo: '/repo',
+                ejecutar: ejecutar(),
+                fetchInyectado: fetchFalso,
+                listarDocumentos: documentosFeatures,
+                listarDocumentosTareas: documentosTareas(),
+                credenciales: { token: 'tok', databaseId: features.databaseId, databaseIdTareas: '' },
+                hoy: HOY,
+                log: (l) => lineas.push(l),
+            },
+        );
+
+        expect(resumen.codigo).toBe(0);
+        expect(orden).not.toContain('tareas');
+        expect(lineas[lineas.indexOf('Tareas:') + 1]).toBe(
+            'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.',
+        );
     });
 
     test('sin ninguna credencial y sin "--dry-run", Tareas no agrega nada al error de Features', async () => {
@@ -384,7 +604,7 @@ describe('sincronizar — corrida real con Features y Tareas', () => {
         const [paginaTarea] = [...tareas.paginas.values()];
         expect(paginaFeature.properties.Feature).toEqual({ title: [{ type: 'text', text: { content: 'Feature X' } }] });
         expect(paginaTarea.properties.Tarea).toEqual({ title: [{ type: 'text', text: { content: 'Tarea X' } }] });
-        expect(paginaTarea.properties).not.toHaveProperty('Feature');
+        expect(paginaTarea.properties.Feature).toEqual({ relation: [{ id: paginaFeature.id }] });
         expect(paginaTarea.properties.Documento).toEqual({
             url: 'https://github.com/owner/repo/blob/main/odd/tareas/tarea-x.md',
         });
@@ -423,6 +643,35 @@ describe('sincronizar — corrida real con Features y Tareas', () => {
         expect(tareas.paginas.size).toBe(0);
         expect(resumen.tareas?.codigo).toBe(1);
         expect(resumen.codigo).toBe(1);
+    });
+
+    test('una relación "Feature" que apunta a otra base es error de esquema de Tareas (no se escribe nada)', async () => {
+        const features = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const tareas = crearNotionFalsoTareas({ ...ESQUEMA_CORRECTO_NOTION_TAREAS, Feature: relacionConFeatures('ds-otra') });
+        const { fetchFalso } = combinarNotionFalsos(features, tareas);
+        const lineas: string[] = [];
+
+        const resumen = await sincronizar(
+            { dryRun: false },
+            {
+                raizRepo: '/repo',
+                ejecutar: ejecutar(),
+                fetchInyectado: fetchFalso,
+                listarDocumentos: documentosFeatures,
+                listarDocumentosTareas: documentosTareas(),
+                credenciales: { token: 'tok', databaseId: features.databaseId, databaseIdTareas: tareas.databaseId },
+                hoy: HOY,
+                log: (l) => lineas.push(l),
+            },
+        );
+
+        expect(resumen.creadas).toBe(1);
+        expect(tareas.paginas.size).toBe(0);
+        expect(resumen.tareas?.razonNoCalculado).toBe('el esquema de la base de Notion no coincide');
+        expect(resumen.codigo).toBe(1);
+        expect(lineas.slice(lineas.indexOf('Tareas:'))).toContain(
+            'La propiedad "Feature" es una relación con otra base (data source "ds-otra"): debería apuntar a la base de Features (data source "ds-fake").',
+        );
     });
 });
 
@@ -465,6 +714,8 @@ describe('sincronizar — ajustes explícitos distintos de los por defecto', () 
         );
 
         expect(resumen.codigo).toBe(0);
+        expect(features.paginas.size).toBe(1);
+        expect(tareas.paginas.size).toBe(1);
         expect(carpetasLeidas).toEqual(['docs/features', 'docs/tareas']);
         expect(rutasFechadas).toEqual(['docs/features/feature-x.md', 'docs/tareas/tarea-x.md']);
         expect([...features.paginas.values()][0].properties.Documento).toEqual({

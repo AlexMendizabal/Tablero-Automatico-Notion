@@ -18,9 +18,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Without `NOTION_TAREAS_DB_ID` they are skipped with an informational line;
   without a tasks folder nothing changes. `--dry-run` without credentials
   prints a second `Tareas:` block with the parent feature slug.
+- Tasks database: `Feature` relation to the Features database, written from
+  each task's parent (the page that already existed or was just created; an
+  empty relation, with a warning, when the parent has no page; an orphan
+  Features page whose document was deleted is never linked). The sync
+  validates that the relation targets the Features data source. When the
+  Features sync does not finish, tasks skip Notion so relations are never
+  cleared on partial information. `--dry-run` with credentials shows the
+  resolved relation per task.
+- Tasks database: `Responsable` (`Assignee` in `en`) person property, managed
+  by hand in Notion. The sync validates it and never writes or overwrites it.
+
+### Fixed
+
+- Without `NOTION_TAREAS_DB_ID` (or with it empty), task documents are still
+  parsed and validated: format errors make the exit code non-zero and parent
+  warnings are printed; only Notion is skipped.
+- Parent feature warnings are now also printed when a run stops early because
+  of a shallow clone or git not being available.
 
 ### Changed
 
+- `TABLERO_CARPETA_TAREAS` explicitly set empty or equal to `TABLERO_CARPETA`
+  (after normalization) is now a configuration error, reported before any
+  Notion call. When `TABLERO_CARPETA_TAREAS` is not set and `TABLERO_CARPETA`
+  is the default tasks folder (`odd/tareas`), tasks are disabled instead and
+  the output is the features-only one.
+- The task frontmatter `feature` must be a valid document slug: not empty,
+  not `.` or `..`, no leading or trailing whitespace (inner spaces and dots
+  are fine, e.g. `mi feature` or `a..b`), and no `/`, `\`,
+  `< > : " | ? *` or control characters; otherwise it is a format error of
+  that task.
 - Internal refactor: the single sync script is split into `src/core`,
   `src/ports`, `src/adapters`, `src/app` and `src/entrypoints` (entry point:
   `src/entrypoints/cli.ts`), with tests split by layer. No behavior change.

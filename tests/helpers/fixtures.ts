@@ -2,7 +2,7 @@
  * Fixtures y fakes compartidos por los tests (documentos, filas, `ejecutar`
  * falso, fetch falso y un Notion falso completo en memoria).
  */
-import { type FilaTablero, type TareaDocumento } from '../../src/core/types';
+import { type FilaTablero, type PropiedadEsquemaNotion, type TareaDocumento } from '../../src/core/types';
 import { type FetchInyectado } from '../../src/ports/notion';
 import { type EjecutarComando } from '../../src/ports/sincronizar';
 
@@ -151,7 +151,7 @@ export interface OpcionesNotionFalso {
     prefijoIds?: string;
 }
 
-export function crearNotionFalsoCompleto(esquema: Record<string, { type: string }>, opciones: OpcionesNotionFalso = {}) {
+export function crearNotionFalsoCompleto(esquema: Record<string, PropiedadEsquemaNotion>, opciones: OpcionesNotionFalso = {}) {
     // Un ID de 32 hex "de verdad" (no "db-fake"): con la validación de T7,
     // "databaseId" pasa por "normalizarIdBaseNotion" antes de cualquier
     // llamada de red, así que tiene que parecer un ID real de Notion.
@@ -162,6 +162,9 @@ export function crearNotionFalsoCompleto(esquema: Record<string, { type: string 
     let contadorBloque = 1;
     const paginas = new Map<string, PaginaFalsa>();
     const llamadas = { crearPagina: 0, actualizarPropiedades: 0, borrarBloque: 0, agregarHijos: 0 };
+    /** Todos los pedidos recibidos, en orden, con su cuerpo crudo ("" si no
+     *  tiene): para asertar qué viajó (o qué nunca viajó) a Notion. */
+    const solicitudes: Array<{ metodo: string; ruta: string; cuerpo: string }> = [];
 
     // Permite simular que una operación puntual falla (para probar que la
     // Huella se escribe al final, ver fix "Huella al final" del review de
@@ -183,6 +186,7 @@ export function crearNotionFalsoCompleto(esquema: Record<string, { type: string 
         const ruta = url.replace('https://api.notion.com/v1', '');
         const metodo = init.method;
         const cuerpo = init.body ? JSON.parse(init.body) : undefined;
+        solicitudes.push({ metodo, ruta, cuerpo: init.body ?? '' });
 
         if (metodo === 'GET' && ruta === `/databases/${databaseId}`) {
             return respuestaFalsa(200, { data_sources: [{ id: dataSourceId, name: 'Tablero' }] });
@@ -254,6 +258,7 @@ export function crearNotionFalsoCompleto(esquema: Record<string, { type: string 
         fetchFalso,
         paginas,
         llamadas,
+        solicitudes,
         databaseId,
         dataSourceId,
         prefijoIds,
@@ -326,18 +331,37 @@ export async function conBoardLanguage<T>(valor: string | undefined, fn: () => P
     }
 }
 
-/** Base de Tareas: las mismas columnas que el tablero de Features, con
- *  "Tarea" ("Task" en inglés) como título. */
-export const ESQUEMA_CORRECTO_NOTION_TAREAS: Record<string, { type: string }> = Object.fromEntries(
-    Object.entries(ESQUEMA_CORRECTO_NOTION).map(([nombre, tipo]) => [nombre === 'Feature' ? 'Tarea' : nombre, tipo]),
-);
+/** Data source de la base falsa de Features por defecto (ver
+ *  `crearNotionFalsoCompleto`): el destino de la relación "Feature". */
+export const DATA_SOURCE_FEATURES_FALSO = 'ds-fake';
 
-export const ESQUEMA_CORRECTO_NOTION_TAREAS_EN: Record<string, { type: string }> = Object.fromEntries(
-    Object.entries(ESQUEMA_CORRECTO_NOTION_EN).map(([nombre, tipo]) => [nombre === 'Feature' ? 'Task' : nombre, tipo]),
-);
+/** Propiedad "Feature" de la base de Tareas: relación con la base de
+ *  Features (data source `destino`). */
+export function relacionConFeatures(destino: string = DATA_SOURCE_FEATURES_FALSO): PropiedadEsquemaNotion {
+    return { type: 'relation', relation: { data_source_id: destino, database_id: '0123456789abcdef0123456789abcdef' } };
+}
+
+/** Base de Tareas: las mismas columnas que el tablero de Features, con
+ *  "Tarea" ("Task" en inglés) como título, más "Feature" (relación con la
+ *  base de Features) y "Responsable" ("Assignee", people). */
+export const ESQUEMA_CORRECTO_NOTION_TAREAS: Record<string, PropiedadEsquemaNotion> = {
+    ...Object.fromEntries(
+        Object.entries(ESQUEMA_CORRECTO_NOTION).map(([nombre, tipo]) => [nombre === 'Feature' ? 'Tarea' : nombre, tipo]),
+    ),
+    Feature: relacionConFeatures(),
+    Responsable: { type: 'people' },
+};
+
+export const ESQUEMA_CORRECTO_NOTION_TAREAS_EN: Record<string, PropiedadEsquemaNotion> = {
+    ...Object.fromEntries(
+        Object.entries(ESQUEMA_CORRECTO_NOTION_EN).map(([nombre, tipo]) => [nombre === 'Feature' ? 'Task' : nombre, tipo]),
+    ),
+    Feature: relacionConFeatures(),
+    Assignee: { type: 'people' },
+};
 
 /** Base falsa de Tareas, con IDs propios (ver `combinarNotionFalsos`). */
-export function crearNotionFalsoTareas(esquema: Record<string, { type: string }> = ESQUEMA_CORRECTO_NOTION_TAREAS) {
+export function crearNotionFalsoTareas(esquema: Record<string, PropiedadEsquemaNotion> = ESQUEMA_CORRECTO_NOTION_TAREAS) {
     return crearNotionFalsoCompleto(esquema, {
         databaseId: 'fedcba9876543210fedcba9876543210',
         dataSourceId: 'ds-tareas',

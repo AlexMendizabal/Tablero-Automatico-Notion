@@ -11,6 +11,7 @@
 import {
     FORMATO_FRONTMATTER_FEATURE,
     FORMATO_FRONTMATTER_TAREA,
+    esSlugDocumentoValido,
     parsearDocumento,
     parsearDocumentoConFormato,
 } from '../../src/core/parse';
@@ -560,6 +561,34 @@ describe('parsearDocumentoConFormato', () => {
         if (!resultado.ok) {
             expect(resultado.errores).toHaveLength(1);
             expect(resultado.errores[0]).toMatch(/^Frontmatter faltante o inválido: 'feature' debe ser/);
+        }
+    });
+
+    test.each(['"a/b"', '"a\\\\b"', '" x"', '"x "', '"con\\ttab"', '"."', '".."', '"../fuera"', '"a:b"', '"a*b"'])(
+        'Tarea: "feature: %s" no es un slug de documento válido (error de formato)',
+        (valor) => {
+            const resultado = parsearDocumentoConFormato('t', conFeature(valor), FORMATO_FRONTMATTER_TAREA);
+
+            expect(resultado.ok).toBe(false);
+            if (!resultado.ok) {
+                expect(resultado.errores).toHaveLength(1);
+                expect(resultado.errores[0]).toMatch(/^Frontmatter faltante o inválido: 'feature' no es un slug válido \(/);
+            }
+        },
+    );
+
+    test.each(['ejemplo-feature', 'feature_x.v2', 'Ñandú-2026', 'a..b', 'mi feature'])('Tarea: "feature: \"%s\"" es un slug válido', (slug) => {
+        const resultado = parsearDocumentoConFormato('t', conFeature(JSON.stringify(slug)), FORMATO_FRONTMATTER_TAREA);
+
+        expect(resultado.ok && resultado.feature).toBe(slug);
+    });
+
+    test('esSlugDocumentoValido: las reglas del nombre de un documento sin ".md"', () => {
+        expect(esSlugDocumentoValido('ejemplo-feature')).toBe(true);
+        expect(esSlugDocumentoValido('a..b')).toBe(true);
+        expect(esSlugDocumentoValido('mi feature')).toBe(true);
+        for (const invalido of ['', ' ', ' x', 'x ', 'a/b', 'a\\b', '.', '..', 'a<b', 'a|b', 'a?b', 'a"b', 'a\u0001b', 'a\tb']) {
+            expect(esSlugDocumentoValido(invalido)).toBe(false);
         }
     });
 
