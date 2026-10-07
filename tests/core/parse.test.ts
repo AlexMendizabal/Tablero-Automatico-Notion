@@ -9,7 +9,7 @@
  * no puede volver estos tests rojos por accidente.
  */
 import { parsearDocumento } from '../../src/core/parse';
-import { conBoardLanguage, docBase, tarea } from '../helpers/fixtures';
+import { conBoardLanguage, docBase } from '../helpers/fixtures';
 
 import '../helpers/aislar-board-language';
 

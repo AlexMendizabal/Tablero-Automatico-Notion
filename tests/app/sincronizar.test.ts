@@ -8,7 +8,6 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { type Estado } from '../../src/core/types';
 import { type FetchInyectado } from '../../src/ports/notion';
 import { type EjecutarComando } from '../../src/ports/sincronizar';
 import { sincronizar } from '../../src/app/sincronizar';
