@@ -21,11 +21,12 @@ import type { EjecutarComando } from '../ports/sincronizar';
 // CLI
 // ---------------------------------------------------------------------------
 
-const AYUDA = `
+export const AYUDA = `
 Sync del estado de las features (odd/tasks/*.md) hacia un tablero de Notion.
 
 Uso:
-  npx tsx src/sync-tablero-features.ts [--dry-run] [--ayuda]
+  npm run sync -- [--dry-run] [--ayuda]
+  npx tsx src/entrypoints/cli.ts [--dry-run] [--ayuda]
 
   --dry-run   No escribe en Notion. Sin credenciales, imprime las filas
               calculadas desde el repositorio. Con credenciales, consulta
@@ -83,13 +84,20 @@ function principal(argumentos: string[]): void {
 }
 
 /**
+ * `true` si `rutaScript` (normalmente `process.argv[1]`) es este punto de
+ * entrada: `src/entrypoints/cli.ts` vía tsx, o el `.js`/`.mjs`/`.cjs`
+ * compilado, con separadores `/` o `\` (Windows). Cualquier otra ruta (el
+ * worker de Jest, otro módulo) da `false`.
+ */
+export function esInvocacionDirecta(rutaScript: string | undefined): boolean {
+    return /(^|\/)entrypoints\/cli\.(ts|js|mjs|cjs)$/.test((rutaScript ?? '').replace(/\\/g, '/'));
+}
+
+/**
  * Se ejecuta solo cuando el script se invoca directamente (tsx/node), nunca
  * cuando lo importa un test. Se compara contra `process.argv[1]` en vez de
  * `import.meta.url` porque Jest transpila este archivo a CommonJS.
  */
-const invocadoDirectamente = /entrypoints\/cli\.(ts|js|mjs|cjs)$/.test(
-    (process.argv[1] ?? '').replace(/\\/g, '/'),
-);
-if (invocadoDirectamente) {
+if (esInvocacionDirecta(process.argv[1])) {
     principal(process.argv.slice(2));
 }

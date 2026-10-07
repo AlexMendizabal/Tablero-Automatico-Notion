@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal refactor: the single sync script is split into `src/core`,
   `src/ports`, `src/adapters`, `src/app` and `src/entrypoints` (entry point:
   `src/entrypoints/cli.ts`), with tests split by layer. No behavior change.
+- `--ayuda` now shows the real commands (`npm run sync -- …` and
+  `npx tsx src/entrypoints/cli.ts …`) instead of the removed
+  `src/sync-tablero-features.ts`.
 
 ### Fixed
 
