@@ -107,6 +107,17 @@ describe('sincronizarEntidad — contribuyentes por documento', () => {
         expect(filas.map((f) => f.contribuyentes)).toEqual([['Ana', 'Bruno', 'carla', 'octocat']]);
     });
 
+    test('"--dry-run" sin credenciales los muestra como última columna de la fila', async () => {
+        const { lineas } = await correr([
+            { slug: 'x', contenido: doc('["feat/x-1"]') },
+            { slug: 'y', contenido: doc('["feat/nada"]') },
+        ]);
+
+        expect(lineas).toContain('slug | estado | progreso | PRs abiertos | días | actualizado | contribuyentes');
+        expect(lineas.find((l) => l.startsWith('x '))).toMatch(/ \| Ana, Bruno, octocat$/);
+        expect(lineas.find((l) => l.startsWith('y '))).toMatch(/ \| —$/);
+    });
+
     test('compara contra origin/<rama base> y consulta cada rama una sola vez aunque la compartan varios documentos', async () => {
         const { filas, llamadas } = await correr([
             { slug: 'a', contenido: doc('["feat/x-1"]') },

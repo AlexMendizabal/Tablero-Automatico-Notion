@@ -8,7 +8,7 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { construirFila, formatearFilaLegible } from '../../src/core/entities/feature';
+import { construirFila, ENCABEZADO_FILA_LEGIBLE, formatearFilaLegible } from '../../src/core/entities/feature';
 import { type DocumentoODD } from '../../src/core/types';
 import { filaBase, tarea } from '../helpers/fixtures';
 
@@ -184,8 +184,17 @@ describe('construirFila — contribuyentes', () => {
 describe('formatearFilaLegible', () => {
     test('fija el ancho de cada columna y el separador " | "', () => {
         expect(formatearFilaLegible(filaBase())).toBe(
-            'feature-x                    | En curso       | 1/2 tareas   | #1               | 5d     | 2026-09-01T00:00:00.000Z',
+            'feature-x                    | En curso       | 1/2 tareas   | #1               | 5d     | 2026-09-01T00:00:00.000Z | —',
         );
+    });
+
+    test('los contribuyentes van al final, separados por comas', () => {
+        const columnas = formatearFilaLegible(filaBase({ contribuyentes: ['Ana', 'octocat'] })).split(' | ');
+        expect(columnas[columnas.length - 1]).toBe('Ana, octocat');
+    });
+
+    test('el encabezado nombra la columna de contribuyentes', () => {
+        expect(ENCABEZADO_FILA_LEGIBLE).toBe('slug | estado | progreso | PRs abiertos | días | actualizado | contribuyentes');
     });
 
     test('sin PRs abiertos muestra una raya (—) en esa columna', () => {

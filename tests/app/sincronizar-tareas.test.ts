@@ -285,7 +285,7 @@ describe('sincronizar — "--dry-run" sin credenciales con Tareas', () => {
         expect(lineas[inicioTareas - 1]).toBe('');
         expect(lineas.slice(inicioTareas + 1, inicioTareas + 3)).toEqual([
             '--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:',
-            'slug | feature | estado | progreso | PRs abiertos | días | actualizado',
+            'slug | feature | estado | progreso | PRs abiertos | días | actualizado | contribuyentes',
         ]);
         expect(lineas[inicioTareas + 3]).toMatch(/^tarea-x\s+\| feature-x\s+\| Terminada\s+\| 1\/1 tareas/);
         expect(lineas.slice(inicioTareas + 4)).toEqual([

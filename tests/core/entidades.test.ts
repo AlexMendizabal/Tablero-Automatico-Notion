@@ -251,10 +251,14 @@ describe('descriptor de Tarea', () => {
     test('la forma legible muestra el slug de la feature padre, o "—" si no tiene', () => {
         const descriptor = crearDescriptorTarea();
 
-        expect(descriptor.encabezadoFilaLegible).toBe('slug | feature | estado | progreso | PRs abiertos | días | actualizado');
-        expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila('padre')))).toMatch(
-            /^tarea-x\s+\| padre\s+\| En curso\s+\| 1\/2 tareas\s+\| —\s+\| 1d\s+\| 2026-09-20T00:00:00/,
+        expect(descriptor.encabezadoFilaLegible).toBe(
+            'slug | feature | estado | progreso | PRs abiertos | días | actualizado | contribuyentes',
         );
+        expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila('padre')))).toMatch(
+            /^tarea-x\s+\| padre\s+\| En curso\s+\| 1\/2 tareas\s+\| —\s+\| 1d\s+\| 2026-09-20T00:00:00\.000Z \| —$/,
+        );
+        const { feature: _titulo, ...resto } = filaBase({ contribuyentes: ['Ana', 'Zoe'] });
+        expect(descriptor.formatearFilaLegible({ ...resto, tarea: 'T', featurePadre: null })).toMatch(/ \| Ana, Zoe$/);
         expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila(null)))).toMatch(
             /^tarea-x\s+\| —\s+\| En curso/,
         );

@@ -253,7 +253,13 @@ export function construirFilaEnCarpeta(
 }
 
 /** Encabezado de `formatearFilaLegible` ("--dry-run" sin credenciales). */
-export const ENCABEZADO_FILA_LEGIBLE = 'slug | estado | progreso | PRs abiertos | días | actualizado';
+export const ENCABEZADO_FILA_LEGIBLE = 'slug | estado | progreso | PRs abiertos | días | actualizado | contribuyentes';
+
+/** Columna de contribuyentes de la forma legible: separados por comas, o
+ *  "—" si no hay ninguno. */
+export function contribuyentesLegibles(contribuyentes: readonly string[]): string {
+    return contribuyentes.length > 0 ? contribuyentes.join(', ') : '—';
+}
 
 export function formatearFilaLegible(fila: FilaTablero): string {
     return [
@@ -263,6 +269,7 @@ export function formatearFilaLegible(fila: FilaTablero): string {
         (fila.prsAbiertos || '—').padEnd(16),
         `${fila.diasSinActividad}d`.padEnd(6),
         fila.actualizado,
+        contribuyentesLegibles(fila.contribuyentes),
     ].join(' | ');
 }
 

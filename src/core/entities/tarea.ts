@@ -17,6 +17,7 @@ import { derivarEstado } from '../status';
 import type { DocumentoODD, Estado, FilaTablero } from '../types';
 import {
     construirFilaEnCarpeta,
+    contribuyentesLegibles,
     construirValoresPropiedades as construirValoresPropiedadesFeature,
     TEXTOS_POR_IDIOMA as TEXTOS_FEATURE,
     TIPOS_PROPIEDAD as TIPOS_PROPIEDAD_FEATURE,
@@ -176,7 +177,8 @@ export function detallePlanRelacion(filas: FilaTarea[], relacion: RelacionFeatur
     ];
 }
 
-export const ENCABEZADO_FILA_LEGIBLE_TAREA = 'slug | feature | estado | progreso | PRs abiertos | días | actualizado';
+export const ENCABEZADO_FILA_LEGIBLE_TAREA =
+    'slug | feature | estado | progreso | PRs abiertos | días | actualizado | contribuyentes';
 
 /** Como la forma legible de Features, con el slug de la feature padre (o
  *  "—") como segunda columna. */
@@ -189,6 +191,7 @@ export function formatearFilaLegibleTarea(fila: FilaTarea): string {
         (fila.prsAbiertos || '—').padEnd(16),
         `${fila.diasSinActividad}d`.padEnd(6),
         fila.actualizado,
+        contribuyentesLegibles(fila.contribuyentes),
     ].join(' | ');
 }
 
