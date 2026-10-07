@@ -1,5 +1,6 @@
 /**
- * Adaptador de gh (vía el comando inyectable): pull requests y owner/repo.
+ * Adaptador de gh (vía el comando inyectable): pull requests (con el login
+ * de su autor) y owner/repo.
  */
 import type { PullRequestInfo } from '../core/types';
 import type { EjecutarComando } from '../ports/sincronizar';
@@ -14,7 +15,7 @@ export function obtenerPRs(ejecutar: EjecutarComando): PullRequestInfo[] {
         '--limit',
         '1000',
         '--json',
-        'number,headRefName,state,createdAt,mergedAt,closedAt',
+        'number,headRefName,state,createdAt,mergedAt,closedAt,author',
     ]);
     const datos = JSON.parse(salida || '[]') as Array<{
         number: number;
@@ -23,6 +24,7 @@ export function obtenerPRs(ejecutar: EjecutarComando): PullRequestInfo[] {
         createdAt: string;
         mergedAt: string | null;
         closedAt: string | null;
+        author?: { login?: string; is_bot?: boolean } | null;
     }>;
     return datos.map((d) => ({
         number: d.number,
@@ -31,6 +33,8 @@ export function obtenerPRs(ejecutar: EjecutarComando): PullRequestInfo[] {
         createdAt: d.createdAt,
         mergedAt: d.mergedAt,
         closedAt: d.closedAt,
+        // El autor de un PR de un bot (ej. dependabot) no es un contribuyente.
+        ...(d.author?.login && !d.author.is_bot ? { autor: d.author.login } : {}),
     }));
 }
 

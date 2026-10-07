@@ -61,6 +61,9 @@ function puertosFalsos(
         ramasConFecha: () => [],
         prs: () => [],
         ownerRepo: () => 'owner/repo',
+        refRamaBase: () => null,
+        autoresDeRango: () => [],
+        autoresDeCommit: () => [],
     };
     return {
         raizRepo: '/repo',

@@ -2,6 +2,8 @@
  * Fixtures y fakes compartidos por los tests (documentos, filas, `ejecutar`
  * falso, fetch falso y un Notion falso completo en memoria).
  */
+import { FORMATO_AUTORES } from '../../src/adapters/git-cli';
+import { type AutorCommit } from '../../src/core/contribuyentes';
 import { type FilaTablero, type PropiedadEsquemaNotion, type TareaDocumento } from '../../src/core/types';
 import { type FetchInyectado } from '../../src/ports/notion';
 import { type EjecutarComando } from '../../src/ports/sincronizar';
@@ -69,13 +71,38 @@ export function crearEjecutarFalso(respuestas: {
     /** Si es true, CUALQUIER comando "git" lanza (simula que git no puede
      *  correr, ej. ENOENT). */
     gitNoDisponible?: boolean;
+    /** Qué ref de la rama base existe ("git rev-parse --verify"), para
+     *  cualquier nombre de rama base: `origin` (por defecto,
+     *  `refs/remotes/origin/<base>`), `local` (`refs/heads/<base>`) o `null`
+     *  (ninguna). */
+    ramaBase?: 'origin' | 'local' | null;
+    /** Rama (sin `origin/`) → autores de sus commits fuera de la base
+     *  ("git log --ignore-missing ..."). Una rama ausente no tiene commits. */
+    autoresPorRama?: Record<string, AutorCommit[]>;
+    /** sha → autores de "git show" con `FORMATO_AUTORES`. Un sha ausente
+     *  da una salida vacía. */
+    autoresPorCommit?: Record<string, AutorCommit[]>;
 }): EjecutarComando {
+    const ramaBase = respuestas.ramaBase === undefined ? 'origin' : respuestas.ramaBase;
     return (comando: string, args: string[]) => {
         if (comando === 'git' && respuestas.gitNoDisponible) {
             throw new Error('ejecutar falso: spawn git ENOENT');
         }
         if (comando === 'git' && args[0] === 'rev-parse' && args[1] === '--is-shallow-repository') {
             return respuestas.superficial ? 'true' : 'false';
+        }
+        if (comando === 'git' && args[0] === 'rev-parse' && args[1] === '--verify') {
+            const ref = args[args.length - 1];
+            const prefijo = ramaBase === 'origin' ? 'refs/remotes/origin/' : ramaBase === 'local' ? 'refs/heads/' : null;
+            if (prefijo !== null && ref.startsWith(prefijo)) return 'f'.repeat(40) + '\n';
+            throw new Error(`ejecutar falso: la ref "${ref}" no existe`);
+        }
+        if (comando === 'git' && args[0] === 'log' && args.includes('--ignore-missing')) {
+            const local = args.find((a) => a.startsWith('refs/heads/')) ?? '';
+            return salidaAutoresGit(respuestas.autoresPorRama?.[local.slice('refs/heads/'.length)] ?? []);
+        }
+        if (comando === 'git' && args[0] === 'show' && args.includes(`--format=${FORMATO_AUTORES}`)) {
+            return salidaAutoresGit(respuestas.autoresPorCommit?.[args[args.length - 1]] ?? []);
         }
         if (comando === 'git' && args[0] === 'for-each-ref') return respuestas.ramas ?? '';
         if (comando === 'gh' && args[0] === 'pr' && args[1] === 'list') return respuestas.prs ?? '[]';
@@ -97,6 +124,23 @@ export function crearEjecutarFalso(respuestas: {
         }
         throw new Error(`ejecutar falso: comando no simulado en este test: ${comando} ${args.join(' ')}`);
     };
+}
+
+/** Lo que imprimiría git con `FORMATO_AUTORES` para esos autores. */
+export function salidaAutoresGit(autores: AutorCommit[]): string {
+    return autores
+        .map(
+            (autor) =>
+                [autor.nombre, autor.email, autor.coautores.map((c) => `${c.nombre} <${c.email}>`).join('\x1d')].join(
+                    '\x1f',
+                ) + '\x1e\n',
+        )
+        .join('');
+}
+
+/** Un autor de commit para los falsos (sin coautores por defecto). */
+export function autorCommit(nombre: string, email: string, coautores: AutorCommit['coautores'] = []): AutorCommit {
+    return { nombre, email, coautores };
 }
 
 /** Respuesta fetch falsa, con headers case-insensitive como el fetch real. */

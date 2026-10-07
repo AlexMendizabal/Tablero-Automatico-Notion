@@ -54,6 +54,9 @@ export interface PullRequestInfo {
      *  trabajo real (ver `calcularActualizado`). Queda opcional en el tipo
      *  solo para poder demostrar en los tests que se ignora aunque llegue. */
     updatedAt?: string;
+    /** Login de GitHub del autor del PR (ausente si es un bot o `gh` no lo
+     *  informa). Fuente de los contribuyentes del documento. */
+    autor?: string;
 }
 
 export interface FilaTablero {

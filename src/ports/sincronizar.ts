@@ -5,6 +5,7 @@
  * `componerDependencias` en `entrypoints/cli.ts`, la raíz de composición).
  */
 import type { AjustesProyecto } from '../core/ajustes';
+import type { AutorCommit } from '../core/contribuyentes';
 import type { Idioma } from '../core/i18n';
 import type { PullRequestInfo, RamaConFecha } from '../core/types';
 import type { ClienteNotion, Credenciales } from './notion';
@@ -21,8 +22,18 @@ export interface RepositorioGit {
     /** Fecha ISO del último commit que tocó `rutaRelativa`; `null` si no hay. */
     fechaDocumento(rutaRelativa: string): string | null;
     ramasConFecha(): RamaConFecha[];
+    /** PRs del repositorio, con el login de su autor cuando se conoce. */
     prs(): PullRequestInfo[];
     ownerRepo(): string;
+    /** Ref completa de la rama base contra la que se comparan las ramas de
+     *  un documento: `origin/<ramaBase>` si existe, si no la rama local;
+     *  `null` si no existe ninguna. */
+    refRamaBase(ramaBase: string): string | null;
+    /** Autores (y coautores) de los commits de `rama` (local u `origin/`)
+     *  que no están en `base` (una ref de `refRamaBase`). */
+    autoresDeRango(base: string, rama: string): AutorCommit[];
+    /** Autor (y coautores) de un commit por hash. */
+    autoresDeCommit(sha: string): AutorCommit[];
 }
 
 /** Lectura de la configuración del entorno, en el momento de la llamada. */
