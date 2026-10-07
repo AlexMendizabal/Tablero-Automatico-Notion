@@ -81,7 +81,7 @@ export function crearEjecutarFalso(respuestas: {
         if (comando === 'gh' && args[0] === 'pr' && args[1] === 'list') return respuestas.prs ?? '[]';
         if (comando === 'git' && args[0] === 'log') {
             const rutaArg = args[args.length - 1];
-            const slug = rutaArg.replace(/^odd\/tasks\//, '').replace(/\.md$/, '');
+            const slug = rutaArg.replace(/^odd\/(tasks|tareas)\//, '').replace(/\.md$/, '');
             return respuestas.fechasPorSlug?.[slug] ?? '';
         }
         if (comando === 'git' && args[0] === 'show') {
@@ -142,12 +142,22 @@ export interface PaginaFalsa {
     createdTime?: string;
 }
 
-export function crearNotionFalsoCompleto(esquema: Record<string, { type: string }>) {
+/** Identidad de una base falsa. Las páginas y bloques llevan `prefijoIds`,
+ *  así dos bases falsas (Features y Tareas) no comparten IDs y se pueden
+ *  enrutar por URL (ver `combinarNotionFalsos`). */
+export interface OpcionesNotionFalso {
+    databaseId?: string;
+    dataSourceId?: string;
+    prefijoIds?: string;
+}
+
+export function crearNotionFalsoCompleto(esquema: Record<string, { type: string }>, opciones: OpcionesNotionFalso = {}) {
     // Un ID de 32 hex "de verdad" (no "db-fake"): con la validación de T7,
     // "databaseId" pasa por "normalizarIdBaseNotion" antes de cualquier
     // llamada de red, así que tiene que parecer un ID real de Notion.
-    const databaseId = '0123456789abcdef0123456789abcdef';
-    const dataSourceId = 'ds-fake';
+    const databaseId = opciones.databaseId ?? '0123456789abcdef0123456789abcdef';
+    const dataSourceId = opciones.dataSourceId ?? 'ds-fake';
+    const prefijoIds = opciones.prefijoIds ?? '';
     let contadorPagina = 1;
     let contadorBloque = 1;
     const paginas = new Map<string, PaginaFalsa>();
@@ -166,7 +176,7 @@ export function crearNotionFalsoCompleto(esquema: Record<string, { type: string 
     function envolverHijos(
         bloques: Record<string, unknown>[],
     ): Array<{ blockId: string; bloque: Record<string, unknown> }> {
-        return bloques.map((b) => ({ blockId: `block-${contadorBloque++}`, bloque: b }));
+        return bloques.map((b) => ({ blockId: `${prefijoIds}block-${contadorBloque++}`, bloque: b }));
     }
 
     const fetchFalso: FetchInyectado = async (url, init) => {
@@ -191,7 +201,7 @@ export function crearNotionFalsoCompleto(esquema: Record<string, { type: string 
         if (metodo === 'POST' && ruta === '/pages') {
             llamadas.crearPagina++;
             if (debeFallarAhora('crearPagina')) return respuestaFalsa(400, { code: 'forced_failure_for_test' });
-            const id = `page-${contadorPagina++}`;
+            const id = `${prefijoIds}page-${contadorPagina++}`;
             paginas.set(id, {
                 id,
                 properties: cuerpo.properties,
@@ -245,6 +255,8 @@ export function crearNotionFalsoCompleto(esquema: Record<string, { type: string 
         paginas,
         llamadas,
         databaseId,
+        dataSourceId,
+        prefijoIds,
         /** La llamada NÚMERO "numero" (1-based, contando desde que arrancó
          *  esta instancia del fake) a "operacion" falla con un 400. */
         forzarFalloEn(operacion: keyof typeof llamadas, numero: number) {
@@ -323,3 +335,32 @@ export const ESQUEMA_CORRECTO_NOTION_TAREAS: Record<string, { type: string }> = 
 export const ESQUEMA_CORRECTO_NOTION_TAREAS_EN: Record<string, { type: string }> = Object.fromEntries(
     Object.entries(ESQUEMA_CORRECTO_NOTION_EN).map(([nombre, tipo]) => [nombre === 'Feature' ? 'Task' : nombre, tipo]),
 );
+
+/** Base falsa de Tareas, con IDs propios (ver `combinarNotionFalsos`). */
+export function crearNotionFalsoTareas(esquema: Record<string, { type: string }> = ESQUEMA_CORRECTO_NOTION_TAREAS) {
+    return crearNotionFalsoCompleto(esquema, {
+        databaseId: 'fedcba9876543210fedcba9876543210',
+        dataSourceId: 'ds-tareas',
+        prefijoIds: 'tareas-',
+    });
+}
+
+/** Un solo `fetch` para dos bases falsas: va a `tareas` todo pedido que
+ *  nombre su base, su data source o un ID con su prefijo (en la URL, o el
+ *  data source en el cuerpo del alta); el resto va a `features`. `orden`
+ *  registra a cuál fue cada pedido, en orden. */
+export function combinarNotionFalsos(
+    features: ReturnType<typeof crearNotionFalsoCompleto>,
+    tareas: ReturnType<typeof crearNotionFalsoCompleto>,
+) {
+    const orden: Array<'features' | 'tareas'> = [];
+    const esDeTareas = (url: string, cuerpo: string) =>
+        [tareas.databaseId, tareas.dataSourceId, tareas.prefijoIds].some((marca) => url.includes(marca)) ||
+        cuerpo.includes(`"${tareas.dataSourceId}"`);
+    const fetchFalso: FetchInyectado = (url, init) => {
+        const destino = esDeTareas(url, init.body ?? '') ? 'tareas' : 'features';
+        orden.push(destino);
+        return (destino === 'tareas' ? tareas : features).fetchFalso(url, init);
+    };
+    return { fetchFalso, orden };
+}
