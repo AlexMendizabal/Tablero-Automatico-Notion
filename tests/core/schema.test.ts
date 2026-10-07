@@ -8,7 +8,7 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { construirPropiedadesNotion, validarEsquema } from '../../src/core/schema';
+import { construirPropiedadesNotion, validarEsquema } from '../../src/core/entities/feature';
 import { type PropiedadesNotion } from '../../src/core/types';
 import { ESQUEMA_CORRECTO_NOTION, filaBase } from '../helpers/fixtures';
 

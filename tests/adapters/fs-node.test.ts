@@ -30,7 +30,7 @@ describe('listarDocumentosODD — carpeta faltante o vacía (fix 5 del review de
         const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-tablero-sin-carpeta-'));
         raicesCreadas.push(raiz);
 
-        expect(() => listarDocumentosODD(raiz)).toThrow(/no se encontró/i);
+        expect(() => listarDocumentosODD(raiz, 'odd/tasks')).toThrow(/no se encontró "odd\/tasks"/i);
     });
 
     test('carpeta "odd/tasks" existente pero sin ningún ".md" lanza un error explícito', () => {
@@ -38,6 +38,6 @@ describe('listarDocumentosODD — carpeta faltante o vacía (fix 5 del review de
         raicesCreadas.push(raiz);
         fs.mkdirSync(path.join(raiz, 'odd', 'tasks'), { recursive: true });
 
-        expect(() => listarDocumentosODD(raiz)).toThrow(/ningún documento/i);
+        expect(() => listarDocumentosODD(raiz, 'odd/tasks')).toThrow(/ningún documento/i);
     });
 });

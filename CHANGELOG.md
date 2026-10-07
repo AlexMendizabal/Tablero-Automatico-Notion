@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal refactor: the single sync script is split into `src/core`,
   `src/ports`, `src/adapters`, `src/app` and `src/entrypoints` (entry point:
   `src/entrypoints/cli.ts`), with tests split by layer. No behavior change.
+- Internal refactor: entity descriptor (`src/core/entities/`). The Feature
+  schema (`TIPOS_PROPIEDAD`), texts (`TEXTOS_POR_IDIOMA`), status rule and row
+  building now live in `src/core/entities/feature.ts`. No behavior change.
+- `--ayuda` now shows the real commands (`npm run sync -- …` and
+  `npx tsx src/entrypoints/cli.ts …`) instead of the removed
+  `src/sync-tablero-features.ts`.
+
+### Fixed
+
+- Duplicate-slug resolution is now deterministic when a Notion page has an
+  unparseable `created_time`: it is treated like a missing one (sorted last).
 
 ## [1.1.0] - 2026-10-06
 

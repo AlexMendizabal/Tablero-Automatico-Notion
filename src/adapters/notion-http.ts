@@ -3,9 +3,8 @@
  * concreto y la lectura de páginas existentes.
  */
 import { mensajeDeError } from '../core/errores';
-import { type Idioma, TEXTOS_POR_IDIOMA } from '../core/i18n';
 import { recortarParaNotion } from '../core/row';
-import type { PaginaExistente, PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
+import type { PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
 import type { ClienteNotion, Dormir, FetchInyectado } from '../ports/notion';
 
 // ---------------------------------------------------------------------------
@@ -408,35 +407,5 @@ export function crearClienteNotion(
                 await pedir('DELETE', `/blocks/${idHijo}`, true);
             }
         },
-    };
-}
-
-function extraerRichTextPlano(propiedad: unknown): string {
-    if (propiedad === null || typeof propiedad !== 'object') return '';
-    const richText = (propiedad as { rich_text?: unknown }).rich_text;
-    if (!Array.isArray(richText)) return '';
-    return richText
-        .map((item: unknown) => {
-            if (item === null || typeof item !== 'object') return '';
-            const conocido = item as { plain_text?: string; text?: { content?: string } };
-            return conocido.plain_text ?? conocido.text?.content ?? '';
-        })
-        .join('');
-}
-
-export function extraerPaginaExistente(
-    pagina: {
-        id: string;
-        properties: PropiedadesNotionBrutas;
-        createdTime: string;
-    },
-    idioma: Idioma,
-): PaginaExistente {
-    const nombres = TEXTOS_POR_IDIOMA[idioma].propiedades;
-    return {
-        pageId: pagina.id,
-        slug: extraerRichTextPlano(pagina.properties?.[nombres.slug]),
-        huella: extraerRichTextPlano(pagina.properties?.[nombres.huella]),
-        createdTime: pagina.createdTime,
     };
 }

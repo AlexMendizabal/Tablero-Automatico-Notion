@@ -5,20 +5,11 @@
 import { mensajeDeError } from '../core/errores';
 import { type ResultadoIdioma, resolverIdiomaTablero } from '../core/i18n';
 import { normalizarIdBaseNotion } from '../core/id-notion';
-import { parsearDocumento } from '../core/parse';
+import { crearDescriptorFeature } from '../core/entities/feature';
+import type { DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
-import { construirFila, formatearFilaLegible } from '../core/row';
-import { construirValoresPropiedades, traducirPropiedades, validarEsquema } from '../core/schema';
+import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
 import type { DocumentoODD, DuplicadoSlug } from '../core/types';
-import { cargarCredenciales, leerBoardLanguage } from '../adapters/config';
-import { obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
-import {
-    obtenerEsRepoSuperficial,
-    obtenerFechaCommit,
-    obtenerFechaDocumento,
-    obtenerRamasConFecha,
-} from '../adapters/git-cli';
-import { crearClienteNotion, dormirPorDefecto, extraerPaginaExistente } from '../adapters/notion-http';
 import type { DependenciasSincronizar } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
@@ -26,6 +17,9 @@ export interface OpcionesCLI {
 }
 
 export interface ResumenSincronizacion {
+    /** Entidad sincronizada (`DescriptorEntidad.clave`, ej. `'feature'`). No
+     *  se imprime: el resumen visible es el mismo para cualquier entidad. */
+    entidad: string;
     codigo: number;
     creadas: number;
     actualizadas: number;
@@ -130,9 +124,14 @@ const RAZON_IDIOMA_INVALIDO = 'el idioma del tablero (BOARD_LANGUAGE) no es vál
  *  git no disponible, clon superficial con anclas declaradas): código 1,
  *  nunca se llegó a consultar Notion. Distinto de un error de formato — no
  *  es culpa de ningún documento en particular. */
-function resumenDeErrorEntorno(log: (linea: string) => void, mensaje: string): ResumenSincronizacion {
+function resumenDeErrorEntorno(
+    log: (linea: string) => void,
+    entidad: string,
+    mensaje: string,
+): ResumenSincronizacion {
     log(`Error de entorno: ${mensaje}`);
     return {
+        entidad,
         codigo: 1,
         creadas: 0,
         actualizadas: 0,
@@ -143,10 +142,48 @@ function resumenDeErrorEntorno(log: (linea: string) => void, mensaje: string): R
     };
 }
 
+/** Separa la huella del resto de los valores: la huella se escribe siempre
+ *  al final, en su propio PATCH (ver "Huella al final" más abajo). */
+function separarHuella<C extends string>(
+    claveHuella: C,
+    valores: Partial<Record<C, unknown>>,
+): { huella: Partial<Record<C, unknown>>; resto: Partial<Record<C, unknown>> } {
+    const resto: Partial<Record<C, unknown>> = { ...valores };
+    delete resto[claveHuella];
+    const huella: Partial<Record<C, unknown>> = {};
+    huella[claveHuella] = valores[claveHuella];
+    return { huella, resto };
+}
+
+/** Sincroniza las Features (la única entidad, por ahora). */
 export async function sincronizar(
     opciones: OpcionesCLI,
     dependencias: DependenciasSincronizar,
 ): Promise<ResumenSincronizacion> {
+    return sincronizarEntidad(
+        crearDescriptorFeature(dependencias.ajustes),
+        opciones,
+        dependencias,
+    );
+}
+
+/**
+ * Pipeline completo de UNA entidad, guiado por su descriptor: lee y parsea
+ * sus documentos, resuelve anclas y actividad en git/gh, arma las filas,
+ * valida el esquema de su base de Notion y escribe (o solo informa, con
+ * "--dry-run").
+ */
+export async function sincronizarEntidad<
+    C extends string,
+    E extends string,
+    D extends DocumentoODD,
+    F extends FilaEntidad,
+>(
+    descriptor: DescriptorEntidad<C, E, D, F>,
+    opciones: OpcionesCLI,
+    dependencias: DependenciasSincronizar,
+): Promise<ResumenSincronizacion> {
+    const entidad = descriptor.clave;
     const log = dependencias.log ?? (() => {});
     const hoy = dependencias.hoy ?? new Date();
 
@@ -155,16 +192,16 @@ export async function sincronizar(
     // código 0, todo huérfano"). "listarDocumentos" ahora lanza en ese caso.
     let documentosLeidos: Array<{ slug: string; contenido: string }>;
     try {
-        documentosLeidos = dependencias.listarDocumentos();
+        documentosLeidos = dependencias.listarDocumentos(descriptor.carpeta);
     } catch (error) {
-        return resumenDeErrorEntorno(log, mensajeDeError(error));
+        return resumenDeErrorEntorno(log, entidad, mensajeDeError(error));
     }
 
-    const documentosParseados: DocumentoODD[] = [];
+    const documentosParseados: D[] = [];
     const erroresDeFormato: Array<{ slug: string; errores: string[] }> = [];
 
     for (const { slug, contenido } of documentosLeidos) {
-        const resultado = parsearDocumento(slug, contenido);
+        const resultado = descriptor.parsearDocumento(slug, contenido);
         if (resultado.ok) documentosParseados.push(resultado.documento);
         else erroresDeFormato.push({ slug, errores: resultado.errores });
     }
@@ -172,7 +209,7 @@ export async function sincronizar(
     let credenciales =
         dependencias.credenciales !== undefined
             ? dependencias.credenciales
-            : cargarCredenciales(dependencias.raizRepo);
+            : dependencias.configuracion.cargarCredenciales(dependencias.raizRepo);
 
     // El idioma se resuelve DESPUÉS de cargar el ".env" (lo hace
     // "cargarCredenciales"), para que BOARD_LANGUAGE pueda vivir ahí también.
@@ -181,10 +218,11 @@ export async function sincronizar(
     const resultadoIdioma: ResultadoIdioma =
         dependencias.idioma !== undefined
             ? { ok: true, idioma: dependencias.idioma }
-            : resolverIdiomaTablero(leerBoardLanguage());
+            : resolverIdiomaTablero(dependencias.configuracion.leerBoardLanguage());
     if (!resultadoIdioma.ok) {
         log(resultadoIdioma.error);
         const resumen: ResumenSincronizacion = {
+            entidad,
             codigo: 1,
             creadas: 0,
             actualizadas: 0,
@@ -208,6 +246,7 @@ export async function sincronizar(
         if (!resultadoId.ok) {
             log(resultadoId.error);
             const resumen: ResumenSincronizacion = {
+                entidad,
                 codigo: 1,
                 creadas: 0,
                 actualizadas: 0,
@@ -228,6 +267,7 @@ export async function sincronizar(
             'Faltan NOTION_TOKEN y/o NOTION_TABLERO_DB_ID. No se realizó ninguna llamada de red ni de Notion.',
         );
         const resumen: ResumenSincronizacion = {
+            entidad,
             codigo: 1,
             creadas: 0,
             actualizadas: 0,
@@ -248,23 +288,25 @@ export async function sincronizar(
     // NO son "el commit no existe" (error de formato de un documento
     // puntual): que el repo sea un clon superficial (las anclas requieren
     // fetch-depth: 0) o que git directamente no pueda correr (ENOENT). En
-    // ambos casos la excepción de "obtenerEsRepoSuperficial" se deja
+    // ambos casos la excepción de "esRepoSuperficial" se deja
     // propagar a propósito (no tiene su propio try/catch) para distinguirlos
-    // de "obtenerFechaCommit", que sí atrapa el fallo puntual de un hash.
+    // de "fechaCommit", que sí atrapa el fallo puntual de un hash.
     const algunDocumentoDeclaraCommits = documentosParseados.some((d) => d.commits.length > 0);
     if (algunDocumentoDeclaraCommits) {
         let esSuperficial: boolean;
         try {
-            esSuperficial = obtenerEsRepoSuperficial(dependencias.ejecutar);
+            esSuperficial = dependencias.repositorio.esRepoSuperficial();
         } catch (error) {
             return resumenDeErrorEntorno(
                 log,
+                entidad,
                 `No se pudo determinar si el repositorio es superficial (¿git no está disponible?): ${mensajeDeError(error)}`,
             );
         }
         if (esSuperficial) {
             return resumenDeErrorEntorno(
                 log,
+                entidad,
                 'Repositorio superficial: las anclas de "commits" requieren un clon completo (fetch-depth: 0).',
             );
         }
@@ -273,13 +315,13 @@ export async function sincronizar(
     // Ahora sí: un hash que no existe en un repo completo, con git
     // funcionando, es un error de formato del documento — se saltea como
     // cualquier otro, nunca en silencio.
-    const documentosValidos: DocumentoODD[] = [];
+    const documentosValidos: D[] = [];
     const fechasCommitsPorSlug = new Map<string, string[]>();
     for (const documento of documentosParseados) {
         const fechasCommits: string[] = [];
         let commitInexistente: string | null = null;
         for (const sha of documento.commits) {
-            const fecha = obtenerFechaCommit(dependencias.ejecutar, sha);
+            const fecha = dependencias.repositorio.fechaCommit(sha);
             if (fecha === null) {
                 commitInexistente = sha;
                 break;
@@ -299,17 +341,17 @@ export async function sincronizar(
         fechasCommitsPorSlug.set(documento.slug, fechasCommits);
     }
 
-    const todasLasRamas = obtenerRamasConFecha(dependencias.ejecutar);
-    const todosLosPRs = obtenerPRs(dependencias.ejecutar);
-    const ownerRepo = obtenerOwnerRepo(dependencias.ejecutar);
+    const todasLasRamas = dependencias.repositorio.ramasConFecha();
+    const todosLosPRs = dependencias.repositorio.prs();
+    const ownerRepo = dependencias.repositorio.ownerRepo();
 
     const filas = documentosValidos.map((documento) =>
-        construirFila({
+        descriptor.construirFila({
             documento,
             todasLasRamas,
             todosLosPRs,
             fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
-            fechaDocumento: obtenerFechaDocumento(dependencias.ejecutar, documento.slug),
+            fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
             hoy,
             ownerRepo,
             idioma,
@@ -319,8 +361,9 @@ export async function sincronizar(
     if (!credenciales) {
         log('--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:');
         log('slug | estado | progreso | PRs abiertos | días | actualizado');
-        for (const fila of filas) log(formatearFilaLegible(fila));
+        for (const fila of filas) log(descriptor.formatearFilaLegible(fila));
         const resumen: ResumenSincronizacion = {
+            entidad,
             codigo: erroresDeFormato.length > 0 ? 1 : 0,
             creadas: 0,
             actualizadas: 0,
@@ -333,12 +376,11 @@ export async function sincronizar(
         return resumen;
     }
 
-    const dormir = dependencias.dormir ?? dormirPorDefecto;
-    const cliente = crearClienteNotion(dependencias.fetchInyectado, credenciales.token, dormir);
+    const cliente = dependencias.crearClienteNotion(credenciales.token);
 
     const dataSourceId = await cliente.obtenerDataSourceId(credenciales.databaseId);
     const esquemaActual = await cliente.obtenerEsquema(dataSourceId);
-    const problemasEsquema = validarEsquema(esquemaActual, idioma);
+    const problemasEsquema = validarEsquemaEntidad(descriptor, esquemaActual, idioma);
 
     if (problemasEsquema.length > 0) {
         for (const problema of problemasEsquema) {
@@ -361,6 +403,7 @@ export async function sincronizar(
             }`,
         );
         const resumen: ResumenSincronizacion = {
+            entidad,
             codigo: 1,
             creadas: 0,
             actualizadas: 0,
@@ -375,7 +418,9 @@ export async function sincronizar(
     }
 
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
-    const paginasExistentesCrudas = paginasNotion.map((pagina) => extraerPaginaExistente(pagina, idioma));
+    const paginasExistentesCrudas = paginasNotion.map((pagina) =>
+        extraerPaginaExistente(descriptor, pagina, idioma),
+    );
     // Una revisión anterior detectó esto: los slugs duplicados en Notion se
     // informan (nunca se borran, nunca se sobrescriben en silencio como hacía el Map anterior).
     const { unicas: paginasExistentes, duplicadas } = resolverDuplicadosPorSlug(paginasExistentesCrudas);
@@ -386,6 +431,7 @@ export async function sincronizar(
         log('--dry-run con credenciales: se consultó Notion en modo lectura; no se escribió nada.');
         const cuerposNuevos = plan.actualizar.filter((a) => a.reescribirCuerpo).length;
         const resumen: ResumenSincronizacion = {
+            entidad,
             codigo: erroresDeFormato.length > 0 || hayProblemasNoFormato ? 1 : 0,
             creadas: 0,
             actualizadas: 0,
@@ -413,35 +459,39 @@ export async function sincronizar(
     for (const fila of plan.crear) {
         const documento = documentosValidos.find((d) => d.slug === fila.slug);
         if (!documento) continue;
-        const { huella, ...valoresSinHuella } = construirValoresPropiedades(fila, idioma);
+        const { huella, resto } = separarHuella(
+            descriptor.claveHuella,
+            descriptor.construirValoresPropiedades(fila, idioma),
+        );
         const pageId = await cliente.crearPagina(
             dataSourceId,
-            traducirPropiedades(valoresSinHuella, idioma),
+            traducirPropiedadesEntidad(descriptor, resto, idioma),
             documento.tareas,
         );
-        await cliente.actualizarPropiedades(pageId, traducirPropiedades({ huella }, idioma));
+        await cliente.actualizarPropiedades(pageId, traducirPropiedadesEntidad(descriptor, huella, idioma));
     }
 
     let cuerposReescritos = 0;
     for (const item of plan.actualizar) {
-        const valores = construirValoresPropiedades(item.fila, idioma);
+        const valores = descriptor.construirValoresPropiedades(item.fila, idioma);
         if (!item.reescribirCuerpo) {
             // Sin reescritura de cuerpo no hay ventana de inconsistencia:
             // todas las propiedades (Huella incluida, que no cambió) se
             // mandan juntas, como antes.
-            await cliente.actualizarPropiedades(item.pageId, traducirPropiedades(valores, idioma));
+            await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, valores, idioma));
             continue;
         }
         const documento = documentosValidos.find((d) => d.slug === item.fila.slug);
         if (!documento) continue;
-        const { huella, ...valoresSinHuella } = valores;
-        await cliente.actualizarPropiedades(item.pageId, traducirPropiedades(valoresSinHuella, idioma));
+        const { huella, resto } = separarHuella(descriptor.claveHuella, valores);
+        await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, resto, idioma));
         await cliente.reescribirCuerpo(item.pageId, documento.tareas);
-        await cliente.actualizarPropiedades(item.pageId, traducirPropiedades({ huella }, idioma));
+        await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, huella, idioma));
         cuerposReescritos++;
     }
 
     const resumen: ResumenSincronizacion = {
+        entidad,
         codigo: erroresDeFormato.length > 0 || hayProblemasNoFormato ? 1 : 0,
         creadas: plan.crear.length,
         actualizadas: plan.actualizar.length,

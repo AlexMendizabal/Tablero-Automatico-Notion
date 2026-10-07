@@ -114,8 +114,8 @@ npm ci
    | Huella | Fingerprint | Text (rich text) | Fingerprint of the task list |
 
    If any of these columns is renamed or changes type in Notion, the
-   `TEXTOS_POR_IDIOMA` dictionary (names, in `src/core/i18n.ts`) or
-   `TIPOS_PROPIEDAD` (types, in `src/core/schema.ts`) must be updated too.
+   `TEXTOS_POR_IDIOMA` dictionary (names) or `TIPOS_PROPIEDAD` (types), both
+   in `src/core/entities/feature.ts`, must be updated too.
    The two sides of the contract live there and in Notion, and neither can be
    discovered from the other automatically.
 4. Share the database with the integration: open the database, open the

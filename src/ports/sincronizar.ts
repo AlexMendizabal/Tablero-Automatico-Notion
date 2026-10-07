@@ -1,21 +1,53 @@
 /**
- * Puertos de la orquestación: el comando (git/gh) inyectable y las
- * dependencias de `sincronizar`.
+ * Puertos de la orquestación: lo que `sincronizar`/`sincronizarEntidad`
+ * necesitan del mundo exterior (documentos, git/gh, configuración y Notion).
+ * La orquestación nunca importa adaptadores: los recibe ya compuestos (ver
+ * `componerDependencias` en `entrypoints/cli.ts`, la raíz de composición).
  */
+import type { AjustesProyecto } from '../core/ajustes';
 import type { Idioma } from '../core/i18n';
-import type { Credenciales, Dormir, FetchInyectado } from './notion';
+import type { PullRequestInfo, RamaConFecha } from '../core/types';
+import type { ClienteNotion, Credenciales } from './notion';
 
 export type EjecutarComando = (comando: string, argumentos: string[]) => string;
 
+/** Lo que la orquestación consulta del repositorio (git) y de GitHub (gh). */
+export interface RepositorioGit {
+    /** `true` si el clon es superficial. LANZA si git no puede correr: la
+     *  orquestación lo distingue de un commit inexistente. */
+    esRepoSuperficial(): boolean;
+    /** Fecha ISO de un commit por hash; `null` si no existe. */
+    fechaCommit(sha: string): string | null;
+    /** Fecha ISO del último commit que tocó `rutaRelativa`; `null` si no hay. */
+    fechaDocumento(rutaRelativa: string): string | null;
+    ramasConFecha(): RamaConFecha[];
+    prs(): PullRequestInfo[];
+    ownerRepo(): string;
+}
+
+/** Lectura de la configuración del entorno, en el momento de la llamada. */
+export interface ConfiguracionEntorno {
+    /** Carga el `.env` de `raizRepo` y devuelve las credenciales de Notion,
+     *  o `null` si falta alguna. */
+    cargarCredenciales(raizRepo: string): Credenciales | null;
+    /** Valor crudo de `BOARD_LANGUAGE` (se lee DESPUÉS de cargar el `.env`). */
+    leerBoardLanguage(): string | undefined;
+}
+
 export interface DependenciasSincronizar {
     raizRepo: string;
-    ejecutar: EjecutarComando;
-    fetchInyectado: FetchInyectado;
-    listarDocumentos: () => Array<{ slug: string; contenido: string }>;
-    dormir?: Dormir;
+    /** Documentos de la carpeta de la entidad (`DescriptorEntidad.carpeta`,
+     *  relativa a `raizRepo`). Lanza si la carpeta falta o está vacía. */
+    listarDocumentos: (carpeta: string) => Array<{ slug: string; contenido: string }>;
+    repositorio: RepositorioGit;
+    configuracion: ConfiguracionEntorno;
+    /** Cliente de Notion autenticado con `token`. */
+    crearClienteNotion: (token: string) => ClienteNotion;
+    /** Ajustes por proyecto ya resueltos (carpeta de Features, rama base). */
+    ajustes: AjustesProyecto;
     hoy?: Date;
-    /** `undefined` → se cargan desde el entorno (uso real, `principal()`).
-     *  `null` → sin credenciales (tests). Objeto → credenciales explícitas. */
+    /** `undefined` → se cargan con `configuracion.cargarCredenciales` (uso
+     *  real). `null` → sin credenciales (tests). Objeto → explícitas. */
     credenciales?: Credenciales | null;
     log?: (linea: string) => void;
     /** `undefined` → se resuelve de `BOARD_LANGUAGE` (después de cargar el

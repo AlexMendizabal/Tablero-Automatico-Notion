@@ -8,9 +8,9 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { construirFila } from '../../src/core/row';
+import { construirFila, formatearFilaLegible } from '../../src/core/entities/feature';
 import { type DocumentoODD } from '../../src/core/types';
-import { tarea } from '../helpers/fixtures';
+import { filaBase, tarea } from '../helpers/fixtures';
 
 import '../helpers/aislar-board-language';
 
@@ -131,5 +131,27 @@ describe('construirFila', () => {
             ownerRepo: 'owner/repo',
         });
         expect(fila.actualizado).toBe(new Date('2026-07-31T00:00:00Z').toISOString());
+    });
+});
+
+// ---------------------------------------------------------------------------
+// formatearFilaLegible ("--dry-run" sin credenciales)
+// ---------------------------------------------------------------------------
+
+describe('formatearFilaLegible', () => {
+    test('fija el ancho de cada columna y el separador " | "', () => {
+        expect(formatearFilaLegible(filaBase())).toBe(
+            'feature-x                    | En curso       | 1/2 tareas   | #1               | 5d     | 2026-09-01T00:00:00.000Z',
+        );
+    });
+
+    test('sin PRs abiertos muestra una raya (—) en esa columna', () => {
+        const columnas = formatearFilaLegible(filaBase({ prsAbiertos: '' })).split(' | ');
+        expect(columnas[3]).toBe('—'.padEnd(16));
+    });
+
+    test('un slug más largo que su columna no se recorta', () => {
+        const slugLargo = 'una-feature-con-un-slug-muy-largo-de-verdad';
+        expect(formatearFilaLegible(filaBase({ slug: slugLargo })).startsWith(`${slugLargo} | `)).toBe(true);
     });
 });

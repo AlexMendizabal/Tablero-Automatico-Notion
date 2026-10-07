@@ -8,10 +8,12 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { type Estado } from '../../src/core/types';
 import { type FetchInyectado } from '../../src/ports/notion';
 import { type EjecutarComando } from '../../src/ports/sincronizar';
-import { sincronizar } from '../../src/app/sincronizar';
+import { sincronizar, sincronizarEntidad } from '../helpers/sincronizar-compuesto';
+import * as app from '../../src/app/sincronizar';
+import { type RepositorioGit } from '../../src/ports/sincronizar';
+import { crearDescriptorFeature } from '../../src/core/entities/feature';
 import {
     conBoardLanguage,
     conRespuestaPerdidaUnaVez,
@@ -885,5 +887,94 @@ describe('sincronizar — idioma del tablero', () => {
         const resumen = await conBoardLanguage('xx', () => correr(notionFalso, { idioma: 'en' }));
         expect(resumen.codigo).toBe(0);
         expect([...notionFalso.paginas.values()][0].properties.Status).toEqual({ select: { name: 'Done' } });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// sincronizarEntidad — el pipeline lo guía el descriptor
+// ---------------------------------------------------------------------------
+
+describe('sincronizarEntidad', () => {
+    test('usa la carpeta del descriptor para fechar el documento e informa la entidad en el resumen', async () => {
+        const rutasConsultadas: string[] = [];
+        const base = crearEjecutarFalso({ ramas: '', prs: '[]', ownerRepo: 'owner/repo' });
+        const ejecutar: EjecutarComando = (comando, args) => {
+            if (comando === 'git' && args[0] === 'log') rutasConsultadas.push(args[args.length - 1]);
+            return base(comando, args);
+        };
+        const lineas: string[] = [];
+
+        const resumen = await sincronizarEntidad(
+            crearDescriptorFeature({ carpetaFeatures: 'docs/features', ramaBaseDocumento: 'main' }),
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                ejecutar,
+                fetchInyectado: jest.fn() as unknown as FetchInyectado,
+                listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                credenciales: null,
+                hoy: new Date('2026-09-21T00:00:00Z'),
+                log: (linea) => lineas.push(linea),
+            },
+        );
+
+        expect(resumen.entidad).toBe('feature');
+        expect(resumen.codigo).toBe(0);
+        expect(rutasConsultadas).toEqual(['docs/features/feature-x.md']);
+        expect(lineas.join('\n')).not.toMatch(/entidad|feature:/i);
+    });
+
+    test('"sincronizar" es el pipeline de Features', async () => {
+        const resumen = await sincronizar(
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                ejecutar: crearEjecutarFalso({ ramas: '', prs: '[]', ownerRepo: 'owner/repo' }),
+                fetchInyectado: jest.fn() as unknown as FetchInyectado,
+                listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                credenciales: null,
+                hoy: new Date('2026-09-21T00:00:00Z'),
+            },
+        );
+        expect(resumen.entidad).toBe('feature');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// La app solo habla con puertos
+// ---------------------------------------------------------------------------
+
+describe('sincronizar — puertos sin adaptadores', () => {
+    test('con puertos falsos (sin git, gh, .env ni Notion reales) arma y muestra las filas en "--dry-run"', async () => {
+        const repositorio: RepositorioGit = {
+            esRepoSuperficial: () => false,
+            fechaCommit: () => null,
+            fechaDocumento: (ruta) => (ruta === 'odd/tasks/feature-x.md' ? '2026-09-01T00:00:00Z' : null),
+            ramasConFecha: () => [],
+            prs: () => [],
+            ownerRepo: () => 'owner/repo',
+        };
+        const crearClienteNotion = jest.fn();
+        const cargarCredenciales = jest.fn(() => null);
+        const lineas: string[] = [];
+
+        const resumen = await app.sincronizar(
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                repositorio,
+                configuracion: { cargarCredenciales, leerBoardLanguage: () => undefined },
+                crearClienteNotion,
+                ajustes: { carpetaFeatures: 'odd/tasks', ramaBaseDocumento: 'main' },
+                hoy: new Date('2026-09-21T00:00:00Z'),
+                log: (linea) => lineas.push(linea),
+            },
+        );
+
+        expect(resumen.codigo).toBe(0);
+        expect(cargarCredenciales).toHaveBeenCalledWith('/repo');
+        expect(crearClienteNotion).not.toHaveBeenCalled();
+        expect(lineas.some((linea) => linea.startsWith('feature-x ') && linea.includes('| 20d    |'))).toBe(true);
     });
 });

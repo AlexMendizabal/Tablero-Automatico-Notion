@@ -1,8 +1,8 @@
 /**
  * Tipos compartidos del núcleo puro.
  */
-import type { Idioma, TEXTOS_POR_IDIOMA } from './i18n';
-import type { ClavePropiedad } from './schema';
+import type { ClavePropiedad, TEXTOS_POR_IDIOMA } from './entities/feature';
+import type { Idioma } from './i18n';
 
 // ---------------------------------------------------------------------------
 // Tipos del núcleo puro
@@ -117,9 +117,11 @@ export interface DuplicadoSlug {
     pageIds: string[];
 }
 
-export interface PlanSync {
-    crear: FilaTablero[];
-    actualizar: Array<{ pageId: string; fila: FilaTablero; reescribirCuerpo: boolean }>;
+/** Plan de escritura de una entidad; `F` es el tipo de su fila (por defecto,
+ *  la de Feature). */
+export interface PlanSync<F extends { slug: string; huella: string } = FilaTablero> {
+    crear: F[];
+    actualizar: Array<{ pageId: string; fila: F; reescribirCuerpo: boolean }>;
     huerfanas: PaginaExistente[];
 }
 

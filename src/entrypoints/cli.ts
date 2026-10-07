@@ -13,19 +13,81 @@
 import { execFileSync } from 'node:child_process';
 
 import { sincronizar } from '../app/sincronizar';
+import type { AjustesProyecto } from '../core/ajustes';
+import type { Idioma } from '../core/i18n';
+import { AJUSTES_PROYECTO, cargarCredenciales, leerBoardLanguage } from '../adapters/config';
 import { listarDocumentosODD } from '../adapters/fs-node';
-import type { FetchInyectado } from '../ports/notion';
-import type { EjecutarComando } from '../ports/sincronizar';
+import { obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
+import {
+    obtenerEsRepoSuperficial,
+    obtenerFechaCommit,
+    obtenerFechaDocumento,
+    obtenerRamasConFecha,
+} from '../adapters/git-cli';
+import { crearClienteNotion, dormirPorDefecto } from '../adapters/notion-http';
+import type { Credenciales, Dormir, FetchInyectado } from '../ports/notion';
+import type { DependenciasSincronizar, EjecutarComando } from '../ports/sincronizar';
+
+// ---------------------------------------------------------------------------
+// Raíz de composición
+// ---------------------------------------------------------------------------
+
+/** Lo mínimo para componer las dependencias reales: el comando (git/gh) y el
+ *  `fetch` inyectables, más los mismos ajustes opcionales que acepta
+ *  `DependenciasSincronizar` (los tests inyectan falsos acá). */
+export interface EntradaComposicion {
+    raizRepo: string;
+    ejecutar: EjecutarComando;
+    fetchInyectado: FetchInyectado;
+    listarDocumentos: (carpeta: string) => Array<{ slug: string; contenido: string }>;
+    /** Por defecto, `dormirPorDefecto` (espera real entre reintentos). */
+    dormir?: Dormir;
+    hoy?: Date;
+    credenciales?: Credenciales | null;
+    log?: (linea: string) => void;
+    idioma?: Idioma;
+    /** Por defecto, `AJUSTES_PROYECTO` (leídos del entorno al cargar
+     *  `adapters/config.ts`). */
+    ajustes?: AjustesProyecto;
+}
+
+/** Conecta los adaptadores reales (git/gh vía `ejecutar`, Notion vía
+ *  `fetchInyectado`, configuración vía `.env`/entorno) con los puertos de la
+ *  orquestación. Único lugar donde la app y los adaptadores se encuentran. */
+export function componerDependencias(entrada: EntradaComposicion): DependenciasSincronizar {
+    const { ejecutar, fetchInyectado } = entrada;
+    const dormir = entrada.dormir ?? dormirPorDefecto;
+    return {
+        raizRepo: entrada.raizRepo,
+        listarDocumentos: entrada.listarDocumentos,
+        repositorio: {
+            esRepoSuperficial: () => obtenerEsRepoSuperficial(ejecutar),
+            fechaCommit: (sha) => obtenerFechaCommit(ejecutar, sha),
+            fechaDocumento: (rutaRelativa) => obtenerFechaDocumento(ejecutar, rutaRelativa),
+            ramasConFecha: () => obtenerRamasConFecha(ejecutar),
+            prs: () => obtenerPRs(ejecutar),
+            ownerRepo: () => obtenerOwnerRepo(ejecutar),
+        },
+        configuracion: { cargarCredenciales, leerBoardLanguage },
+        crearClienteNotion: (token) => crearClienteNotion(fetchInyectado, token, dormir),
+        ajustes: entrada.ajustes ?? AJUSTES_PROYECTO,
+        hoy: entrada.hoy,
+        credenciales: entrada.credenciales,
+        log: entrada.log,
+        idioma: entrada.idioma,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
-const AYUDA = `
+export const AYUDA = `
 Sync del estado de las features (odd/tasks/*.md) hacia un tablero de Notion.
 
 Uso:
-  npx tsx src/sync-tablero-features.ts [--dry-run] [--ayuda]
+  npm run sync -- [--dry-run] [--ayuda]
+  npx tsx src/entrypoints/cli.ts [--dry-run] [--ayuda]
 
   --dry-run   No escribe en Notion. Sin credenciales, imprime las filas
               calculadas desde el repositorio. Con credenciales, consulta
@@ -62,13 +124,13 @@ function principal(argumentos: string[]): void {
 
     sincronizar(
         { dryRun },
-        {
+        componerDependencias({
             raizRepo,
             ejecutar,
             fetchInyectado,
-            listarDocumentos: () => listarDocumentosODD(raizRepo),
+            listarDocumentos: (carpeta) => listarDocumentosODD(raizRepo, carpeta),
             log: (linea) => console.log(linea),
-        },
+        }),
     )
         .then((resumen) => {
             // El resumen final (contadores o el aviso de "no calculado", más
@@ -83,13 +145,20 @@ function principal(argumentos: string[]): void {
 }
 
 /**
+ * `true` si `rutaScript` (normalmente `process.argv[1]`) es este punto de
+ * entrada: `src/entrypoints/cli.ts` vía tsx, o el `.js`/`.mjs`/`.cjs`
+ * compilado, con separadores `/` o `\` (Windows). Cualquier otra ruta (el
+ * worker de Jest, otro módulo) da `false`.
+ */
+export function esInvocacionDirecta(rutaScript: string | undefined): boolean {
+    return /(^|\/)entrypoints\/cli\.(ts|js|mjs|cjs)$/.test((rutaScript ?? '').replace(/\\/g, '/'));
+}
+
+/**
  * Se ejecuta solo cuando el script se invoca directamente (tsx/node), nunca
  * cuando lo importa un test. Se compara contra `process.argv[1]` en vez de
  * `import.meta.url` porque Jest transpila este archivo a CommonJS.
  */
-const invocadoDirectamente = /entrypoints\/cli\.(ts|js|mjs|cjs)$/.test(
-    (process.argv[1] ?? '').replace(/\\/g, '/'),
-);
-if (invocadoDirectamente) {
+if (esInvocacionDirecta(process.argv[1])) {
     principal(process.argv.slice(2));
 }
