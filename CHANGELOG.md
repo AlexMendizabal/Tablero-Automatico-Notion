@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prints a second `Tareas:` block with the parent feature slug.
 - Tasks database: `Feature` relation to the Features database, written from
   each task's parent (the page that already existed or was just created; an
-  empty relation, with a warning, when the parent has no page). The sync
+  empty relation, with a warning, when the parent has no page; an orphan
+  Features page whose document was deleted is never linked). The sync
   validates that the relation targets the Features data source. When the
   Features sync does not finish, tasks skip Notion so relations are never
   cleared on partial information. `--dry-run` with credentials shows the

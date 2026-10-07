@@ -238,8 +238,9 @@ const MENSAJE_FEATURES_INCOMPLETA =
  *   configuración o de esquema), las Tareas se validan pero no tocan Notion,
  *   con una línea informativa; el código de salida es el de Features.
  * - Cada Tarea escribe su relación "Feature" con la página de su feature
- *   padre (las de `paginasPorSlug` de Features), o vacía si no tiene padre o
- *   su padre no tiene página (esto último, con un aviso).
+ *   padre (las de `paginasPorSlug` de Features que tienen documento: una
+ *   página huérfana nunca se enlaza), o vacía si no tiene padre o su padre
+ *   no tiene página (esto último, con un aviso).
  * - Una tarea cuya feature padre no existe genera un aviso, no un error.
  *
  * El código de salida es distinto de 0 si cualquiera de las dos falló.
@@ -295,9 +296,17 @@ export async function sincronizar(
     // vacía (o se borraría) con información incompleta.
     const sinBaseTareas = credenciales !== null && !credenciales.databaseIdTareas;
     const featuresIncompleta = credenciales !== null && !sinBaseTareas && !features.paginasPorSlug;
+    // Solo páginas con documento de Features en el repo (válido o no): una
+    // página huérfana (su documento se borró) nunca se enlaza, así la
+    // relación coincide con el aviso de "no existe".
     const relacion: RelacionFeatures | undefined =
         features.paginasPorSlug && !sinBaseTareas
-            ? { paginas: features.paginasPorSlug, porCrear: new Set(features.slugsPorCrear ?? []) }
+            ? {
+                  paginas: new Map(
+                      [...features.paginasPorSlug].filter(([slug]) => slugsFeatures?.has(slug) ?? false),
+                  ),
+                  porCrear: new Set(features.slugsPorCrear ?? []),
+              }
             : undefined;
     const descriptorTarea = crearDescriptorTarea(dependencias.ajustes, slugsFeatures, relacion);
 

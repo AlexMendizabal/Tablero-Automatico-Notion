@@ -194,6 +194,39 @@ describe('sincronizar — relación "Feature" de las Tareas', () => {
         expect(pagina.properties.Feature).toEqual({ relation: [{ id: 'page-nueva' }] });
     });
 
+    test('un padre huérfano (página en Notion sin documento) nunca se enlaza: relación vacía y aviso de "no existe"', async () => {
+        const { features, lineas, entrada, paginaTarea } = escenario(
+            [{ slug: 'padre', contenido: docFeature('Padre') }],
+            [{ slug: 'tarea-x', contenido: docTarea('vieja') }],
+        );
+        features.paginas.set('page-vieja', { id: 'page-vieja', properties: propiedadesMinimas('vieja', 'x'), hijos: [] });
+
+        const resumen = await sincronizar({ dryRun: false }, entrada);
+
+        expect(resumen.codigo).toBe(0);
+        expect(resumen.huerfanas).toEqual(['vieja']);
+        expect(paginaTarea('tarea-x')?.properties.Feature).toEqual({ relation: [] });
+        const aviso = 'La feature padre "vieja" no existe: no hay ningún documento "vieja.md" en "odd/tasks".';
+        expect(resumen.tareas?.avisos).toEqual([{ slug: 'tarea-x', mensajes: [aviso] }]);
+        expect(lineas.slice(lineas.indexOf('Tareas:'))).toContain(`    - ${aviso}`);
+    });
+
+    test('un padre con documento con errores de formato pero con página en Notion se sigue enlazando', async () => {
+        const { features, entrada, paginaTarea } = escenario(
+            [
+                { slug: 'sana', contenido: docFeature('Sana') },
+                { slug: 'rota', contenido: '# sin frontmatter' },
+            ],
+            [{ slug: 'tarea-x', contenido: docTarea('rota') }],
+        );
+        features.paginas.set('page-rota', { id: 'page-rota', properties: propiedadesMinimas('rota', 'x'), hijos: [] });
+
+        const resumen = await sincronizar({ dryRun: false }, entrada);
+
+        expect(resumen.tareas?.avisos).toBeUndefined();
+        expect(paginaTarea('tarea-x')?.properties.Feature).toEqual({ relation: [{ id: 'page-rota' }] });
+    });
+
     test('un padre sin página en Notion (su documento tiene errores) deja la relación vacía y avisa', async () => {
         const { entrada, paginaTarea } = escenario(
             [
