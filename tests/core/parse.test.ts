@@ -8,7 +8,12 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { parsearDocumento } from '../../src/core/parse';
+import {
+    FORMATO_FRONTMATTER_FEATURE,
+    FORMATO_FRONTMATTER_TAREA,
+    parsearDocumento,
+    parsearDocumentoConFormato,
+} from '../../src/core/parse';
 import { conBoardLanguage, docBase } from '../helpers/fixtures';
 
 import '../helpers/aislar-board-language';
@@ -502,5 +507,85 @@ describe('parsearDocumento — palabras clave en español o inglés', () => {
         if (!sinSeccion.ok) {
             expect(sinSeccion.errores.join('\n')).toMatch(/'## Tareas'.*'## Tasks'/);
         }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Claves de frontmatter por entidad (Feature: ramas/commits; Tarea: + feature)
+// ---------------------------------------------------------------------------
+
+describe('parsearDocumentoConFormato', () => {
+    const conFeature = (valor: string) =>
+        docBase({ frontmatter: ['---', 'ramas: ["feat/x"]', `feature: ${valor}`, '---'].join('\n') });
+
+    test('un documento de Feature con "feature:" da EXACTAMENTE el error de clave desconocida de siempre', () => {
+        const resultado = parsearDocumento('x', conFeature('"padre"'));
+        const conFormato = parsearDocumentoConFormato('x', conFeature('"padre"'), FORMATO_FRONTMATTER_FEATURE);
+
+        expect(resultado).toEqual({
+            ok: false,
+            errores: [
+                `Frontmatter faltante o inválido: clave desconocida "feature" (solo se admiten 'ramas' (o 'branches') y 'commits').`,
+            ],
+        });
+        expect(conFormato).toEqual(resultado);
+    });
+
+    test('Tarea: "feature" es opcional; si falta, el padre es null', () => {
+        const resultado = parsearDocumentoConFormato('t', docBase(), FORMATO_FRONTMATTER_TAREA);
+
+        const comoFeature = parsearDocumento('t', docBase());
+        expect(resultado.ok && comoFeature.ok).toBe(true);
+        if (resultado.ok && comoFeature.ok) {
+            expect(resultado.feature).toBeNull();
+            expect(resultado.documento).toEqual(comoFeature.documento);
+        }
+    });
+
+    test('Tarea: "feature" es un string JSON con el slug de la feature padre', () => {
+        const resultado = parsearDocumentoConFormato('t', conFeature('"ejemplo-feature"'), FORMATO_FRONTMATTER_TAREA);
+
+        expect(resultado.ok).toBe(true);
+        if (resultado.ok) {
+            expect(resultado.feature).toBe('ejemplo-feature');
+            expect(resultado.documento.ramas).toEqual(['feat/x']);
+            expect(resultado.documento).not.toHaveProperty('feature');
+        }
+    });
+
+    test.each(['ejemplo-feature', '["a"]', '""', '"  "', '3'])('Tarea: "feature: %s" es error de formato', (valor) => {
+        const resultado = parsearDocumentoConFormato('t', conFeature(valor), FORMATO_FRONTMATTER_TAREA);
+
+        expect(resultado.ok).toBe(false);
+        if (!resultado.ok) {
+            expect(resultado.errores).toHaveLength(1);
+            expect(resultado.errores[0]).toMatch(/^Frontmatter faltante o inválido: 'feature' debe ser/);
+        }
+    });
+
+    test('Tarea: una clave desconocida lista las tres claves admitidas', () => {
+        const resultado = parsearDocumentoConFormato(
+            't',
+            docBase({ frontmatter: ['---', 'ramas: ["feat/x"]', 'otracosa: 1', '---'].join('\n') }),
+            FORMATO_FRONTMATTER_TAREA,
+        );
+
+        expect(resultado).toEqual({
+            ok: false,
+            errores: [
+                `Frontmatter faltante o inválido: clave desconocida "otracosa" (solo se admiten 'ramas' (o 'branches'), 'commits' y 'feature').`,
+            ],
+        });
+    });
+
+    test('Tarea: "feature" duplicada es error', () => {
+        const resultado = parsearDocumentoConFormato(
+            't',
+            docBase({ frontmatter: ['---', 'ramas: ["feat/x"]', 'feature: "a"', 'feature: "b"', '---'].join('\n') }),
+            FORMATO_FRONTMATTER_TAREA,
+        );
+
+        expect(resultado.ok).toBe(false);
+        if (!resultado.ok) expect(resultado.errores).toEqual(['Frontmatter faltante o inválido: la clave "feature" está duplicada.']);
     });
 });
