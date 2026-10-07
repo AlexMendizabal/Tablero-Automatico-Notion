@@ -165,6 +165,35 @@ describe('sincronizar — relación "Feature" de las Tareas', () => {
         expect(paginaTarea('tarea-x')?.properties.Feature).toEqual({ relation: [{ id: 'page-1' }] });
     });
 
+    test('con la huella sin cambios, la actualización reescribe igual la relación (sin reescribir el cuerpo)', async () => {
+        const { features, tareas, entrada, paginaTarea } = escenario(
+            [{ slug: 'padre', contenido: docFeature('Padre') }],
+            [{ slug: 'tarea-x', contenido: docTarea('padre') }],
+        );
+        // 1.ª corrida: la tarea queda con la Huella calculada y relación a "page-1".
+        await sincronizar({ dryRun: false }, entrada);
+        const pagina = paginaTarea('tarea-x');
+        expect(pagina).toBeDefined();
+        if (!pagina) throw new Error('la 1.ª corrida no creó la página de "tarea-x"');
+        // En Notion, la tarea apunta a una página vieja y la de la feature
+        // padre ahora es otra ("page-nueva").
+        pagina.properties.Feature = { relation: [{ id: 'page-vieja' }] };
+        features.paginas.clear();
+        features.paginas.set('page-nueva', { id: 'page-nueva', properties: propiedadesMinimas('padre', 'x'), hijos: [] });
+        const desde = tareas.solicitudes.length;
+
+        const segunda = await sincronizar({ dryRun: false }, entrada);
+
+        expect(segunda.tareas?.actualizadas).toBe(1);
+        expect(segunda.tareas?.cuerposReescritos).toBe(0);
+        const solicitudes = tareas.solicitudes.slice(desde);
+        expect(solicitudes.some((s) => s.ruta.startsWith('/blocks/'))).toBe(false);
+        const actualizaciones = solicitudes.filter((s) => s.metodo === 'PATCH' && s.ruta === `/pages/${pagina.id}`);
+        expect(actualizaciones).toHaveLength(1);
+        expect(JSON.parse(actualizaciones[0].cuerpo).properties.Feature).toEqual({ relation: [{ id: 'page-nueva' }] });
+        expect(pagina.properties.Feature).toEqual({ relation: [{ id: 'page-nueva' }] });
+    });
+
     test('un padre sin página en Notion (su documento tiene errores) deja la relación vacía y avisa', async () => {
         const { entrada, paginaTarea } = escenario(
             [
@@ -313,7 +342,9 @@ describe('sincronizar — "Responsable" nunca viaja a Notion', () => {
         for (const pagina of tareas.paginas.values()) pagina.properties[nombre] = asignado;
         const huella = idioma === 'es' ? 'Huella' : 'Fingerprint';
         const paginaB = [...tareas.paginas.values()].find((p) => JSON.stringify(p.properties.Slug).includes('"tarea-b"'));
-        if (paginaB) paginaB.properties[huella] = { rich_text: [{ type: 'text', text: { content: 'vieja' } }] };
+        expect(paginaB).toBeDefined();
+        if (!paginaB) throw new Error('la 1.ª corrida no creó la página de "tarea-b"');
+        paginaB.properties[huella] = { rich_text: [{ type: 'text', text: { content: 'vieja' } }] };
         // 2.ª corrida: actualizaciones (tarea-a sin reescribir, tarea-b reescribiendo).
         const segunda = await sincronizar({ dryRun: false }, entrada);
 
