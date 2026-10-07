@@ -312,8 +312,11 @@ own.
    - [ ] **T1 — Short name**: description.
    ```
 
-   `feature` must be a valid document slug (the file name without `.md`: no
-   whitespace, `/`, `\`, `..` or `< > : " | ? *`); otherwise it is a format
+   `feature` must be a JSON string holding a valid document slug (the file
+   name without `.md`, e.g. `feature: "mi feature"` for `mi feature.md`).
+   Inner spaces and dots are allowed; it is rejected if it is empty, has
+   leading or trailing whitespace, is exactly `.` or `..`, or contains `/`,
+   `\`, `< > : " | ? *` or control characters. A rejected value is a format
    error of that task. If `feature` names a slug with no document in
    `TABLERO_CARPETA`, the run prints a warning ("Avisos") in the tasks
    summary; it is not a format error and does not change the exit code.

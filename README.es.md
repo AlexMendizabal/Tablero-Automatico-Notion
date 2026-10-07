@@ -321,9 +321,12 @@ feature padre. Se sincronizan después de las features, en una base propia.
    - [ ] **T1 — Nombre corto**: descripción.
    ```
 
-   `feature` tiene que ser un slug de documento válido (el nombre del archivo
-   sin `.md`: sin espacios, `/`, `\`, `..` ni `< > : " | ? *`); si no lo es,
-   es un error de formato de esa tarea. Si `feature` nombra un slug que no
+   `feature` tiene que ser un string JSON con un slug de documento válido (el
+   nombre del archivo sin `.md`, p. ej. `feature: "mi feature"` para
+   `mi feature.md`). Se admiten espacios y puntos interiores; se rechaza si
+   está vacío, tiene espacios al principio o al final, es exactamente `.` o
+   `..`, o contiene `/`, `\`, `< > : " | ? *` o caracteres de control. Un
+   valor rechazado es un error de formato de esa tarea. Si `feature` nombra un slug que no
    tiene documento en `TABLERO_CARPETA`, la corrida imprime un aviso
    ("Avisos") en el resumen de tareas; no es un error de formato ni cambia el
    código de salida. Ejemplo:
