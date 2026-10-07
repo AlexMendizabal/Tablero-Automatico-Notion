@@ -8,7 +8,7 @@ ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity
 
 - [x] **T1 — Separación en módulos sin cambio de comportamiento (PR 1a)**: mover el archivo único a core/ports/adapters/app/entrypoints, dividir los tests por capa y mantener idéntica la salida de sync:dry.
 - [x] **T2 — Descriptor de entidades (PR 1b)**: llevar esquema, textos, regla de estado y armado de fila a core/entities/feature.ts y orquestar con sincronizarEntidad sin renombrar columnas de Features.
-- [ ] **T3 — Entidad Tarea desde el repo (PR 2)**: documentos en odd/tareas/*.md con feature padre opcional y NOTION_TAREAS_DB_ID opcional que saltea la entidad si falta.
+- [x] **T3 — Entidad Tarea desde el repo (PR 2)**: documentos en odd/tareas/*.md con feature padre opcional y NOTION_TAREAS_DB_ID opcional que saltea la entidad si falta.
 - [ ] **T4 — Esquema de Notion para Tareas (PR 3)**: base de Tareas con relación a Feature, Responsable (people) propiedad de Notion que nunca se escribe y Contribuyentes (multi-select).
 - [ ] **T5 — Contribuyentes desde git y PRs (PR 4)**: autores de ramas, commits ancla del frontmatter, trailers Co-authored-by y autores de PR normalizados con .mailmap.
 - [ ] **T6 — Distribución pública (PR 5)**: action.yml, publicación npm, skill de documentos ODD, README es/en y versión v2.0.0.
@@ -39,8 +39,11 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Seguimientos de T1: resueltos en T2 (imports sin usar, --ayuda, test de formatearFilaLegible y de esInvocacionDirecta, NaN en createdTime, process.env fuera de core, app sin imports de adapters).
 - T2: ruta delegada (escritor único). 8 commits 7712b4f..234ca24; tests 159 → 190; typecheck limpio; sync:dry idéntico en las filas comunes (comparado lado a lado con la base). RED observado para el fix de NaN, la exclusión de propiedades de Notion y esInvocacionDirecta.
 - Revisión T2: 3 tramos de riesgo medio (113f4c9..5c5472c, ..db5cd8f, ..234ca24), aprobados y confirmados.
-- Seguimientos para T3 (no bloqueantes): asertar que listarDocumentos recibe descriptor.carpeta; test de dependencias.ajustes explícitos y de crearDescriptorFeature con ajustes propios (URL de Documento).
+- Seguimientos de T2: resueltos en T3 (listarDocumentos recibe la carpeta del descriptor; ajustes explícitos y URL de Documento con carpetas propias).
+- T3: ruta delegada (escritor único). 8 commits 0d23141..ed3a1e3; tests 190 → 233; typecheck limpio; sin carpeta de tareas la salida de sync:dry es idéntica a la base. RED observado como error de compilación (API inexistente) en cada comportamiento nuevo; los tests de seguimiento fijan comportamiento existente (validados rompiendo la URL a propósito).
+- Revisión T3: 3 tramos de riesgo medio (8edb740..9efc5d7, ..6b0cfda, ..ed3a1e3), aprobados y confirmados.
+- Seguimientos para T4 (no bloqueantes): validar el formato del slug de `feature` antes de convertirlo en relación; test del error de lectura de odd/tareas distinto de ENOENT; los avisos de feature padre no se imprimen en los retornos tempranos por repo superficial o git ausente; test de NOTION_TAREAS_DB_ID vacío; asertar cantidad de páginas en el test de URL de Documento.
 
 ## Próximo paso
 
-- T3 (entidad Tarea desde el repo) en feat/task-entity; ruta delegada (escritor único, varios archivos no triviales). Esquema de Notion para Tareas: columnas equivalentes a Features con título Tarea; relación Feature y Responsable quedan para T4, Contribuyentes para T5.
+- PR 2 en revisión; luego T4 (relación Feature y Responsable) en una rama desde main.
