@@ -31,9 +31,10 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 
 ## Progreso
 
-- T1: ruta delegada (escritor único; preparación + varios archivos no triviales). Hecha en b6295bc. Verificación: npm run typecheck limpio; npm test 10 suites, 159/159; sync:dry idéntico a la línea base salvo la ruta del script.
-- Seguimientos de T1 para T2: el texto de ayuda (--ayuda) todavía menciona src/sync-tablero-features.ts; CARPETA_TAREAS y RAMA_BASE_DOCUMENTO se leen de process.env en core/ajustes.ts; app/sincronizar.ts importa adapters directamente (pasarlos a DependenciasSincronizar).
+- T1: ruta delegada (escritor único; preparación + varios archivos no triviales). Primera versión en un solo commit (respaldo en backup/modular-core-v1); el revisor nativo la rechazó por exceder su presupuesto de contexto (10494 líneas), así que se re-cortó en 15 commits (bf8470d..0f73c31) con árbol final idéntico. Cada commit pasa typecheck y 159/159 tests; sync:dry idéntico a la línea base salvo la ruta del script.
+- Revisión T1: commit 1 pasivo; commits 2-14 riesgo medio y commit 15 riesgo alto (4 lentes), todos aprobados y confirmados. El commit 12 tuvo un operation_timeout y se completó al reingresar por la misma revisión.
+- Seguimientos para T2 (no bloqueantes): imports sin usar en tests/core/parse.test.ts, tests/adapters/notion-http.test.ts y tests/app/sincronizar.test.ts; el texto de --ayuda todavía menciona src/sync-tablero-features.ts; sin test para formatearFilaLegible ni para la detección de ejecución directa en src/entrypoints/cli.ts; createdTime inválido (NaN) en resolverDuplicadosPorSlug no es determinista (preexistente); CARPETA_TAREAS y RAMA_BASE_DOCUMENTO leen process.env en core/ajustes.ts; app/sincronizar.ts importa adapters directamente.
 
 ## Próximo paso
 
-- Revisión del PR 1a y luego T2 (descriptor de entidades).
+- Push y PR del PR 1a (decisión del usuario), luego T2 (descriptor de entidades).
