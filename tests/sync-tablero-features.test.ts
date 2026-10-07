@@ -1271,28 +1271,6 @@ describe('crearClienteNotion.crearPagina — recorte de texto y alta en lotes (f
 // Fix 5 del review de T3: carpeta "odd/tasks" faltante o vacía es error
 // ---------------------------------------------------------------------------
 
-describe('listarDocumentosODD — carpeta faltante o vacía (fix 5 del review de T3)', () => {
-    const raicesCreadas: string[] = [];
-    afterAll(() => {
-        for (const raiz of raicesCreadas) fs.rmSync(raiz, { recursive: true, force: true });
-    });
-
-    test('carpeta "odd/tasks" inexistente lanza un error explícito', () => {
-        const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-tablero-sin-carpeta-'));
-        raicesCreadas.push(raiz);
-
-        expect(() => listarDocumentosODD(raiz)).toThrow(/no se encontró/i);
-    });
-
-    test('carpeta "odd/tasks" existente pero sin ningún ".md" lanza un error explícito', () => {
-        const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-tablero-vacia-'));
-        raicesCreadas.push(raiz);
-        fs.mkdirSync(path.join(raiz, 'odd', 'tasks'), { recursive: true });
-
-        expect(() => listarDocumentosODD(raiz)).toThrow(/ningún documento/i);
-    });
-});
-
 describe('sincronizar — "listarDocumentos" que lanza es error de entorno (fix 5 del review de T3)', () => {
     test('código 1 y CERO llamadas al fetch, ANTES de cualquier llamada a Notion (aunque haya credenciales)', async () => {
         const fetchEspiado = jest.fn();

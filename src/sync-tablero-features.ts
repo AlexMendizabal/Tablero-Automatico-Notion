@@ -11,11 +11,16 @@
  *   npx tsx src/sync-tablero-features.ts [--dry-run]
  */
 import { execFileSync } from 'node:child_process';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 
-import dotenv from 'dotenv';
-
+import { cargarCredenciales } from './adapters/config';
+import { listarDocumentosODD } from './adapters/fs-node';
+import { obtenerOwnerRepo, obtenerPRs } from './adapters/gh-cli';
+import {
+    obtenerEsRepoSuperficial,
+    obtenerFechaCommit,
+    obtenerFechaDocumento,
+    obtenerRamasConFecha,
+} from './adapters/git-cli';
 import { CARPETA_TAREAS, RAMA_BASE_DOCUMENTO } from './core/ajustes';
 import { mensajeDeError } from './core/errores';
 import { type Idioma, type ResultadoIdioma, TEXTOS_POR_IDIOMA, resolverIdiomaTablero } from './core/i18n';
@@ -44,8 +49,12 @@ import type { ClienteNotion, Credenciales, Dormir, FetchInyectado } from './port
 import type { DependenciasSincronizar, EjecutarComando } from './ports/sincronizar';
 
 // Re-exports transitorios: el núcleo se está mudando a `src/core` (y los
-// puertos a `src/ports`), y este archivo mantiene su API pública mientras
-// dura la migración.
+// puertos y adaptadores a `src/ports` y `src/adapters`), y este archivo
+// mantiene su API pública mientras dura la migración.
+export * from './adapters/config';
+export * from './adapters/fs-node';
+export * from './adapters/gh-cli';
+export * from './adapters/git-cli';
 export * from './core/ajustes';
 export * from './core/errores';
 export * from './core/i18n';
@@ -95,155 +104,6 @@ export interface ResumenSincronizacion {
      *  imprimían contadores de escritura en cero, indistinguibles de un plan
      *  real sin altas, y se agregó este campo para distinguirlos). */
     razonNoCalculado?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Capa de E/S — documentos ODD
-// ---------------------------------------------------------------------------
-
-// "CARPETA_TAREAS" vive en el bloque "=== Ajustes por proyecto ===", cerca
-// del principio del archivo.
-
-/**
- * Lee `odd/tasks/*.md` (o la carpeta configurada en `CARPETA_TAREAS`). Lanza
- * (nunca devuelve `[]` en silencio) cuando la
- * carpeta no existe o no se puede leer, o cuando existe pero no tiene ningún
- * `.md`: un repo que usa este sync siempre tiene al menos un documento, así
- * que "cero filas" ahí es señal de que se corrió desde el lugar equivocado,
- * no de que no hay nada que sincronizar.
- */
-export function listarDocumentosODD(raizRepo: string): Array<{ slug: string; contenido: string }> {
-    const carpeta = path.join(raizRepo, CARPETA_TAREAS);
-    let entradas: string[];
-    try {
-        entradas = fs.readdirSync(carpeta);
-    } catch {
-        throw new Error(
-            `No se encontró "${CARPETA_TAREAS}" en "${raizRepo}". ¿Se corrió el comando desde la raíz del repositorio (o del worktree)?`,
-        );
-    }
-    const archivos = entradas.filter((f) => f.toLowerCase().endsWith('.md'));
-    if (archivos.length === 0) {
-        throw new Error(`La carpeta "${CARPETA_TAREAS}" en "${raizRepo}" no tiene ningún documento ".md".`);
-    }
-    return archivos.sort().map((archivo) => ({
-        slug: archivo.replace(/\.md$/i, ''),
-        contenido: fs.readFileSync(path.join(carpeta, archivo), 'utf8'),
-    }));
-}
-
-// ---------------------------------------------------------------------------
-// Capa de E/S — git / gh (comando inyectable)
-// ---------------------------------------------------------------------------
-
-export function obtenerRamasConFecha(ejecutar: EjecutarComando): RamaConFecha[] {
-    const salida = ejecutar('git', [
-        'for-each-ref',
-        '--format=%(refname:short)%09%(committerdate:iso-strict)',
-        'refs/heads',
-        'refs/remotes/origin',
-    ]);
-    const porNombre = new Map<string, string>();
-    for (const linea of salida.split(/\r?\n/)) {
-        if (linea.trim() === '') continue;
-        const [refCrudo, fecha] = linea.split('\t');
-        if (!refCrudo || !fecha) continue;
-        const nombre = refCrudo.startsWith('origin/') ? refCrudo.slice('origin/'.length) : refCrudo;
-        if (nombre === 'HEAD' || nombre === 'origin') continue;
-        const existente = porNombre.get(nombre);
-        if (!existente || new Date(fecha).getTime() > new Date(existente).getTime()) {
-            porNombre.set(nombre, fecha);
-        }
-    }
-    return [...porNombre.entries()].map(([nombre, fecha]) => ({ nombre, fecha }));
-}
-
-export function obtenerPRs(ejecutar: EjecutarComando): PullRequestInfo[] {
-    // Deliberadamente NO se pide "updatedAt" (ver PullRequestInfo.updatedAt).
-    const salida = ejecutar('gh', [
-        'pr',
-        'list',
-        '--state',
-        'all',
-        '--limit',
-        '1000',
-        '--json',
-        'number,headRefName,state,createdAt,mergedAt,closedAt',
-    ]);
-    const datos = JSON.parse(salida || '[]') as Array<{
-        number: number;
-        headRefName: string;
-        state: string;
-        createdAt: string;
-        mergedAt: string | null;
-        closedAt: string | null;
-    }>;
-    return datos.map((d) => ({
-        number: d.number,
-        headRefName: d.headRefName,
-        state: d.state as PullRequestInfo['state'],
-        createdAt: d.createdAt,
-        mergedAt: d.mergedAt,
-        closedAt: d.closedAt,
-    }));
-}
-
-export function obtenerFechaDocumento(ejecutar: EjecutarComando, slug: string): string | null {
-    let salida: string;
-    try {
-        salida = ejecutar('git', ['log', '-1', '--format=%cI', '--', `${CARPETA_TAREAS}/${slug}.md`]);
-    } catch {
-        return null;
-    }
-    const fecha = salida.trim();
-    return fecha === '' ? null : fecha;
-}
-
-/** Resuelve la fecha (ISO, `committerdate`) de un commit por hash. `null` si
- *  el commit no existe en el repositorio (ej. `git show` sale con error) —
- *  eso lo trata el llamador como error de formato del documento, nunca en
- *  silencio (ver el frontmatter opcional `commits`). */
-export function obtenerFechaCommit(ejecutar: EjecutarComando, sha: string): string | null {
-    let salida: string;
-    try {
-        salida = ejecutar('git', ['show', '-s', '--format=%cI', sha]);
-    } catch {
-        return null;
-    }
-    const fecha = salida.trim();
-    return fecha === '' ? null : fecha;
-}
-
-/**
- * `true` si el repositorio es un clon superficial (`--depth`). A propósito
- * NO atrapa el error de `ejecutar`: si git no puede correr (ENOENT o
- * similar), eso tiene que distinguirse de "el commit no existe" — es un
- * problema de ENTORNO, no de formato de un documento — y el llamador
- * (`sincronizar`) lo trata así dejando que la excepción se propague.
- */
-export function obtenerEsRepoSuperficial(ejecutar: EjecutarComando): boolean {
-    const salida = ejecutar('git', ['rev-parse', '--is-shallow-repository']);
-    return salida.trim() === 'true';
-}
-
-export function obtenerOwnerRepo(ejecutar: EjecutarComando): string {
-    const desdeEnv = process.env.GITHUB_REPOSITORY;
-    if (desdeEnv && desdeEnv.trim() !== '') return desdeEnv.trim();
-    const salida = ejecutar('gh', ['repo', 'view', '--json', 'nameWithOwner']);
-    const datos = JSON.parse(salida) as { nameWithOwner: string };
-    return datos.nameWithOwner;
-}
-
-// ---------------------------------------------------------------------------
-// Capa de E/S — credenciales
-// ---------------------------------------------------------------------------
-
-export function cargarCredenciales(raizRepo: string): Credenciales | null {
-    dotenv.config({ path: path.resolve(raizRepo, '.env') });
-    const token = process.env.NOTION_TOKEN;
-    const databaseId = process.env.NOTION_TABLERO_DB_ID;
-    if (!token || !databaseId) return null;
-    return { token, databaseId };
 }
 
 // ---------------------------------------------------------------------------
