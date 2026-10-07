@@ -29,7 +29,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 
 - Estrategia: PRs encadenados (1a, 1b, 2, 3, 4, 5), apilados: el PR 1a contra main y cada PR siguiente sobre la rama del anterior.
 - PR 1a: #8 (refactor/modular-core → main), mergeado en 1e85a6c.
-- PR 1b: rama refactor/entity-descriptor desde main.
+- PR 1b: #9 (refactor/entity-descriptor → main), mergeado.
+- PR 2: rama feat/task-entity desde main.
 
 ## Progreso
 
@@ -42,4 +43,4 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 
 ## Próximo paso
 
-- PR 1b en revisión; luego T3 (entidad Tarea) en una rama desde refactor/entity-descriptor.
+- T3 (entidad Tarea desde el repo) en feat/task-entity; ruta delegada (escritor único, varios archivos no triviales). Esquema de Notion para Tareas: columnas equivalentes a Features con título Tarea; relación Feature y Responsable quedan para T4, Contribuyentes para T5.
