@@ -10,7 +10,8 @@
  */
 import { type FetchInyectado } from '../../src/ports/notion';
 import { type EjecutarComando } from '../../src/ports/sincronizar';
-import { sincronizar } from '../../src/app/sincronizar';
+import { sincronizar, sincronizarEntidad } from '../../src/app/sincronizar';
+import { crearDescriptorFeature } from '../../src/core/entities/feature';
 import {
     conBoardLanguage,
     conRespuestaPerdidaUnaVez,
@@ -884,5 +885,55 @@ describe('sincronizar — idioma del tablero', () => {
         const resumen = await conBoardLanguage('xx', () => correr(notionFalso, { idioma: 'en' }));
         expect(resumen.codigo).toBe(0);
         expect([...notionFalso.paginas.values()][0].properties.Status).toEqual({ select: { name: 'Done' } });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// sincronizarEntidad — el pipeline lo guía el descriptor
+// ---------------------------------------------------------------------------
+
+describe('sincronizarEntidad', () => {
+    test('usa la carpeta del descriptor para fechar el documento e informa la entidad en el resumen', async () => {
+        const rutasConsultadas: string[] = [];
+        const base = crearEjecutarFalso({ ramas: '', prs: '[]', ownerRepo: 'owner/repo' });
+        const ejecutar: EjecutarComando = (comando, args) => {
+            if (comando === 'git' && args[0] === 'log') rutasConsultadas.push(args[args.length - 1]);
+            return base(comando, args);
+        };
+        const lineas: string[] = [];
+
+        const resumen = await sincronizarEntidad(
+            crearDescriptorFeature({ carpetaFeatures: 'docs/features', ramaBaseDocumento: 'main' }),
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                ejecutar,
+                fetchInyectado: jest.fn() as unknown as FetchInyectado,
+                listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                credenciales: null,
+                hoy: new Date('2026-09-21T00:00:00Z'),
+                log: (linea) => lineas.push(linea),
+            },
+        );
+
+        expect(resumen.entidad).toBe('feature');
+        expect(resumen.codigo).toBe(0);
+        expect(rutasConsultadas).toEqual(['docs/features/feature-x.md']);
+        expect(lineas.join('\n')).not.toMatch(/entidad|feature:/i);
+    });
+
+    test('"sincronizar" es el pipeline de Features', async () => {
+        const resumen = await sincronizar(
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                ejecutar: crearEjecutarFalso({ ramas: '', prs: '[]', ownerRepo: 'owner/repo' }),
+                fetchInyectado: jest.fn() as unknown as FetchInyectado,
+                listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                credenciales: null,
+                hoy: new Date('2026-09-21T00:00:00Z'),
+            },
+        );
+        expect(resumen.entidad).toBe('feature');
     });
 });

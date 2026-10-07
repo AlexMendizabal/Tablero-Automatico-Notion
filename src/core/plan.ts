@@ -23,12 +23,15 @@ export function calcularHuella(tareas: TareaDocumento[]): string {
 
 /** Upsert por Slug: nunca borra. Una página existente sin fila correspondiente
  *  se reporta en `huerfanas`, no se elimina (decisión del usuario). */
-export function planificarSync(filas: FilaTablero[], paginasExistentes: PaginaExistente[]): PlanSync {
+export function planificarSync<F extends { slug: string; huella: string } = FilaTablero>(
+    filas: F[],
+    paginasExistentes: PaginaExistente[],
+): PlanSync<F> {
     const porSlug = new Map(paginasExistentes.map((p) => [p.slug, p]));
     const slugsDeFilas = new Set(filas.map((f) => f.slug));
 
-    const crear: FilaTablero[] = [];
-    const actualizar: PlanSync['actualizar'] = [];
+    const crear: F[] = [];
+    const actualizar: PlanSync<F>['actualizar'] = [];
 
     for (const fila of filas) {
         const existente = porSlug.get(fila.slug);

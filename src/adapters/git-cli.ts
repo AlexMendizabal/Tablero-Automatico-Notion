@@ -2,7 +2,6 @@
  * Adaptador de git (vía el comando inyectable): ramas, fechas de documentos
  * y de commits, y clon superficial.
  */
-import { CARPETA_TAREAS } from '../core/ajustes';
 import type { RamaConFecha } from '../core/types';
 import type { EjecutarComando } from '../ports/sincronizar';
 
@@ -32,10 +31,13 @@ export function obtenerRamasConFecha(ejecutar: EjecutarComando): RamaConFecha[] 
     return [...porNombre.entries()].map(([nombre, fecha]) => ({ nombre, fecha }));
 }
 
-export function obtenerFechaDocumento(ejecutar: EjecutarComando, slug: string): string | null {
+/** Fecha (ISO) del último commit que tocó el documento en `rutaRelativa`
+ *  (ej. `odd/tasks/<slug>.md`, relativa a la raíz del repositorio). `null`
+ *  si git falla o el archivo no tiene historia. */
+export function obtenerFechaDocumento(ejecutar: EjecutarComando, rutaRelativa: string): string | null {
     let salida: string;
     try {
-        salida = ejecutar('git', ['log', '-1', '--format=%cI', '--', `${CARPETA_TAREAS}/${slug}.md`]);
+        salida = ejecutar('git', ['log', '-1', '--format=%cI', '--', rutaRelativa]);
     } catch {
         return null;
     }
