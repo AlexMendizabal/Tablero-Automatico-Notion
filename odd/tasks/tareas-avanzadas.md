@@ -27,7 +27,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 
 ## Entrega
 
-- Estrategia: PRs encadenados (1a, 1b, 2, 3, 4, 5). Estimación: más de 400 líneas en total; el PR 1a mueve código sin cambiar lógica.
+- Estrategia: PRs encadenados (1a, 1b, 2, 3, 4, 5), apilados: el PR 1a contra main y cada PR siguiente sobre la rama del anterior.
+- PR 1a: #8 (refactor/modular-core → main), commits bf8470d..7636df7.
 
 ## Progreso
 
@@ -37,4 +38,4 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 
 ## Próximo paso
 
-- Push y PR del PR 1a (decisión del usuario), luego T2 (descriptor de entidades).
+- Revisión y merge del PR #8; T2 (descriptor de entidades) en una rama apilada sobre refactor/modular-core.
