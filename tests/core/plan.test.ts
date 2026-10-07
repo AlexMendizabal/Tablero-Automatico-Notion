@@ -130,4 +130,33 @@ describe('resolverDuplicadosPorSlug (fix 8 del review de T3)', () => {
         expect(unicas[0].pageId).toBe('primera');
         expect(duplicadas).toEqual([{ slug: 'x', pageIds: ['segunda'] }]);
     });
+
+    test('un "createdTime" que no es una fecha válida se trata como ausente: gana la fecha válida, sin importar el orden', () => {
+        const invalida: PaginaExistente = { pageId: 'invalida', slug: 'x', huella: 'h', createdTime: 'no-es-fecha' };
+        const valida: PaginaExistente = { pageId: 'valida', slug: 'x', huella: 'h', createdTime: '2026-05-01T00:00:00Z' };
+        const masNueva: PaginaExistente = { pageId: 'mas-nueva', slug: 'x', huella: 'h', createdTime: '2026-06-01T00:00:00Z' };
+
+        for (const orden of [
+            [invalida, valida, masNueva],
+            [masNueva, invalida, valida],
+            [valida, masNueva, invalida],
+            [invalida, masNueva, valida],
+        ]) {
+            const { unicas, duplicadas } = resolverDuplicadosPorSlug(orden);
+            expect(unicas.map((p) => p.pageId)).toEqual(['valida']);
+            expect(duplicadas[0].pageIds).toHaveLength(2);
+            expect(duplicadas[0].pageIds.indexOf('mas-nueva')).toBeLessThan(duplicadas[0].pageIds.indexOf('invalida'));
+        }
+    });
+
+    test('"createdTime" inválido y ausente empatan (los dos van al final): se conserva el orden de la consulta', () => {
+        const paginas: PaginaExistente[] = [
+            { pageId: 'invalida', slug: 'x', huella: 'h', createdTime: 'basura' },
+            { pageId: 'sin-fecha', slug: 'x', huella: 'h' },
+        ];
+        const { unicas, duplicadas } = resolverDuplicadosPorSlug(paginas);
+
+        expect(unicas[0].pageId).toBe('invalida');
+        expect(duplicadas).toEqual([{ slug: 'x', pageIds: ['sin-fecha'] }]);
+    });
 });
