@@ -113,6 +113,17 @@ npm ci
    | Documento | Document | URL | Link to the document |
    | Huella | Fingerprint | Text (rich text) | Fingerprint of the task list |
 
+   Optionally, one more column (see [Contributors](#contributors)):
+
+   | Spanish name (`es`) | English name (`en`) | Type | Meaning |
+   |---|---|---|---|
+   | Contribuyentes | Contributors | Multi-select | Who worked on the feature, according to git and GitHub |
+
+   If the database does not have it, the sync does not write it and prints a
+   single informational line (`La base de Features no tiene la columna
+   "Contributors": se omite.`); the exit code does not change. If it exists
+   with another type, it is a schema error.
+
    If any of these columns is renamed or changes type in Notion, the
    `TEXTOS_POR_IDIOMA` dictionary (names) or `TIPOS_PROPIEDAD` (types), both
    in `src/core/entities/feature.ts`, must be updated too.
@@ -158,7 +169,8 @@ Optional variables, with their default value in parentheses:
 - `TABLERO_CARPETA` (`odd/tasks`): folder where the documents live, relative
   to the repository root.
 - `TABLERO_RAMA_BASE` (`main`): base branch used to build the link in each
-  row's "Documento" ("Document") property.
+  row's "Documento" ("Document") property, and the branch that branches are
+  compared against to compute [contributors](#contributors).
 - `NOTION_TAREAS_DB_ID` (unset): ID (or full URL) of the Notion database for
   advanced tasks (see [Advanced tasks](#advanced-tasks-optional)). Unset
   means tasks are not written to Notion.
@@ -268,8 +280,10 @@ Rules:
 - **`commits`** (optional): JSON array of **full** commit hashes (40
   lowercase hexadecimal characters) made directly on the base branch, with no
   PR or branch of their own. They act as activity anchors for that kind of
-  work, which would otherwise have no associated date. Requires a full clone
-  of the repository (without `fetch-depth: 0` it is reported as an
+  work, which would otherwise have no associated date. They also cover a
+  squash-merged PR: the hash of the squash commit on the base branch keeps
+  its authors and co-authors as [contributors](#contributors). Requires a
+  full clone of the repository (without `fetch-depth: 0` it is reported as an
   environment error).
 - **A single `## Tareas` or `## Tasks` section**: any other level-2 heading
   closes the section. Having zero, or more than one, task section (including
@@ -335,7 +349,9 @@ own.
    Share it with the same integration. The sync validates both columns: that
    they exist with their type, and that the `Feature` relation targets the
    Features database (`NOTION_TABLERO_DB_ID`); a relation to another database
-   is a schema error.
+   is a schema error. The optional `Contribuyentes` (`Contributors`,
+   multi-select) column works as on the board: if it is missing, it is
+   skipped with an informational line.
 3. **Configuration**: set `NOTION_TAREAS_DB_ID` to its ID or URL (same rules as
    `NOTION_TABLERO_DB_ID`). It uses the same `NOTION_TOKEN`.
 
@@ -386,6 +402,51 @@ if that does not exist either, to the date of the run.
 with events that are not real work on the feature — for example, cleaning up
 an old branch updates a PR merged weeks earlier — and using it would hide
 genuinely stalled features behind a recent date that means nothing.
+
+## Contributors
+
+The optional "Contribuyentes" ("Contributors", multi-select) column of both
+Features and Tasks lists who worked on each document. It only uses what the
+document already declares:
+
+- **Commits on its branches**: those on each branch (local or `origin/`)
+  matching its `ramas` patterns that are **not** on the base branch. The base
+  branch is `origin/<TABLERO_RAMA_BASE>` if it exists, otherwise the local
+  `<TABLERO_RAMA_BASE>` branch; if neither exists, branch commits are skipped
+  with a warning (not an error).
+- **Anchor commits** (`commits` in the frontmatter): their authors. This is
+  how the authors of a squash-merged PR are kept, since its original commits
+  are no longer on any branch.
+- **Authors of the PRs** whose branches match `ramas` (the GitHub login
+  reported by `gh pr list`).
+- **`Co-authored-by: Name <email>` trailers** of those commits.
+
+Each person appears once, with their **GitHub login** when it is known (PR
+author, or a noreply email such as `123+login@users.noreply.github.com`) and
+otherwise with their git **author name**. Deduplication is case-insensitive
+and the order is alphabetical. Bots are excluded (`[bot]`, `dependabot`,
+GitHub apps, and GitHub web-flow commits, `noreply@github.com`). Since Notion
+does not allow commas in a multi-select option, they are replaced by a space,
+and each value is cut to 100 characters. The value is written on create and
+on every update (an empty list if there is nobody). `--dry-run` without
+credentials shows it as the last column of each row (`—` if there is nobody).
+
+Tip: if the same person shows up under two names (or as a name and as a
+login), unify them with a [`.mailmap`](https://git-scm.com/docs/gitmailmap)
+file at the repository root; git applies it to the author name and email the
+sync reads. For example, to make the author name match the login:
+
+```
+ana-gh <ana@example.com>
+ana-gh <ana@example.com> Ana Pérez <ana@personal.com>
+```
+
+(the first line renames commits made with `ana@example.com`; the second
+renames and re-emails those made as `Ana Pérez <ana@personal.com>`).
+
+A branch merged without squash stops contributing its commits (they are on
+the base branch now); from then on, its authors still count through the PR
+author or the anchors the document declares.
 
 ## Known limitations
 

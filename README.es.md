@@ -115,6 +115,17 @@ npm ci
    | Documento | Document | URL | Enlace al documento |
    | Huella | Fingerprint | Text (rich text) | Huella de la lista de tareas |
 
+   Opcionalmente, una columna más (ver [Contribuyentes](#contribuyentes)):
+
+   | Nombre en español (`es`) | Nombre en inglés (`en`) | Tipo | Significado |
+   |---|---|---|---|
+   | Contribuyentes | Contributors | Multi-select | Quiénes trabajaron en la feature, según git y GitHub |
+
+   Si la base no la tiene, el sync no la escribe e imprime una sola línea
+   informativa (`La base de Features no tiene la columna "Contribuyentes": se
+   omite.`); el código de salida no cambia. Si existe con otro tipo, es un
+   error de esquema.
+
    Si alguna de estas columnas se renombra o cambia de tipo en Notion, hay
    que actualizar también el diccionario `TEXTOS_POR_IDIOMA` (nombres) o
    `TIPOS_PROPIEDAD` (tipos), los dos en `src/core/entities/feature.ts`.
@@ -162,7 +173,8 @@ Variables opcionales, con su valor por defecto entre paréntesis:
 - `TABLERO_CARPETA` (`odd/tasks`): carpeta donde viven los documentos,
   relativa a la raíz del repositorio.
 - `TABLERO_RAMA_BASE` (`main`): rama base que se usa para armar el enlace de
-  la propiedad "Documento" ("Document") de cada fila.
+  la propiedad "Documento" ("Document") de cada fila, y contra la que se
+  comparan las ramas para calcular los [contribuyentes](#contribuyentes).
 - `NOTION_TAREAS_DB_ID` (sin definir): ID (o URL completa) de la base de
   Notion de las tareas avanzadas (ver
   [Tareas avanzadas](#tareas-avanzadas-opcional)). Sin definir, las tareas no
@@ -277,9 +289,11 @@ Reglas:
 - **`commits`** (opcional): array JSON de hashes de commit **completos** (40
   caracteres hexadecimales en minúscula) hechos directo a la rama base, sin
   PR ni rama propia. Sirve de ancla de actividad para ese tipo de trabajo,
-  que de otro modo no tendría ninguna fecha asociada. Requiere un clon
-  completo del repositorio (sin `fetch-depth: 0`, se reporta como error de
-  entorno).
+  que de otro modo no tendría ninguna fecha asociada. También sirve para un
+  PR mergeado con squash: el hash del commit de squash en la rama base
+  conserva a sus autores y coautores como
+  [contribuyentes](#contribuyentes). Requiere un clon completo del
+  repositorio (sin `fetch-depth: 0`, se reporta como error de entorno).
 - **Una única sección `## Tareas` o `## Tasks`**: cualquier otro encabezado
   de nivel 2 cierra la sección. Tener cero, o más de una, sección de tareas
   (incluida una de cada grafía) es un error de formato.
@@ -344,7 +358,9 @@ feature padre. Se sincronizan después de las features, en una base propia.
    Compartirla con la misma integración. El sync valida las dos columnas: que
    existan con su tipo y que la relación `Feature` apunte a la base de
    Features (`NOTION_TABLERO_DB_ID`); una relación con otra base es un error
-   de esquema.
+   de esquema. La columna opcional `Contribuyentes` (`Contributors`,
+   multi-select) funciona igual que en el tablero: si falta, se omite con una
+   línea informativa.
 3. **Configuración**: definir `NOTION_TAREAS_DB_ID` con su ID o su URL (las
    mismas reglas que `NOTION_TABLERO_DB_ID`). Usa el mismo `NOTION_TOKEN`.
 
@@ -396,6 +412,53 @@ campo se mueve con eventos que no son trabajo real sobre la feature — por
 ejemplo, la limpieza de una rama vieja actualiza el PR mergeado semanas
 atrás — y usarlo escondería features genuinamente estancadas detrás de una
 fecha reciente que no significa nada.
+
+## Contribuyentes
+
+La columna opcional "Contribuyentes" ("Contributors", multi-select) de
+Features y de Tareas lista quiénes trabajaron en cada documento. Sale solo de
+lo que el documento ya declara:
+
+- **Commits de sus ramas**: los de cada rama (local u `origin/`) que coincide
+  con sus patrones de `ramas` y que **no** están en la rama base. La rama base
+  es `origin/<TABLERO_RAMA_BASE>` si existe y, si no, la rama local
+  `<TABLERO_RAMA_BASE>`; si no existe ninguna, los commits de ramas se
+  saltean con un aviso (no es un error).
+- **Commits ancla** (`commits` del frontmatter): sus autores. Es la forma de
+  conservar a los autores de un PR mergeado con squash, cuyos commits
+  originales ya no están en ninguna rama.
+- **Autores de los PRs** cuyas ramas coinciden con `ramas` (el login de
+  GitHub que informa `gh pr list`).
+- **Trailers `Co-authored-by: Nombre <email>`** de esos commits.
+
+Cada persona aparece una sola vez, con su **login de GitHub** cuando se
+conoce (autor de un PR, o un email noreply como
+`123+login@users.noreply.github.com`) y si no con su **nombre de autor** de
+git. La deduplicación no distingue mayúsculas y el orden es alfabético. Se
+excluyen los bots (`[bot]`, `dependabot`, apps de GitHub y los commits de
+GitHub web-flow, `noreply@github.com`). Como Notion no admite comas en una
+opción de multi-select, se reemplazan por un espacio, y cada valor se recorta
+a 100 caracteres. El valor se escribe al crear y en cada actualización (una
+lista vacía si no hay nadie). `--dry-run` sin credenciales lo muestra como
+última columna de cada fila (`—` si no hay nadie).
+
+Consejo: si una misma persona aparece con dos nombres (o como nombre y como
+login), unificala con un archivo [`.mailmap`](https://git-scm.com/docs/gitmailmap)
+en la raíz del repositorio; git lo aplica al nombre y al email de autor que
+lee el sync. Por ejemplo, para que el nombre de autor coincida con el login:
+
+```
+ana-gh <ana@ejemplo.com>
+ana-gh <ana@ejemplo.com> Ana Pérez <ana@personal.com>
+```
+
+(la primera línea cambia el nombre de los commits hechos con
+`ana@ejemplo.com`; la segunda, el nombre y el email de los hechos como
+`Ana Pérez <ana@personal.com>`).
+
+Una rama mergeada sin squash deja de aportar sus commits (ya están en la
+rama base); a partir de ahí, sus autores siguen contando por el autor del PR
+o por las anclas que declare el documento.
 
 ## Límites conocidos
 
