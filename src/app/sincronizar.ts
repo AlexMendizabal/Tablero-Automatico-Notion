@@ -360,7 +360,7 @@ export async function sincronizarEntidad<
 
     if (!credenciales) {
         log('--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:');
-        log('slug | estado | progreso | PRs abiertos | días | actualizado');
+        log(descriptor.encabezadoFilaLegible);
         for (const fila of filas) log(descriptor.formatearFilaLegible(fila));
         const resumen: ResumenSincronizacion = {
             entidad,

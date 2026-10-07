@@ -313,3 +313,13 @@ export async function conBoardLanguage<T>(valor: string | undefined, fn: () => P
         else process.env.BOARD_LANGUAGE = previo;
     }
 }
+
+/** Base de Tareas: las mismas columnas que el tablero de Features, con
+ *  "Tarea" ("Task" en inglés) como título. */
+export const ESQUEMA_CORRECTO_NOTION_TAREAS: Record<string, { type: string }> = Object.fromEntries(
+    Object.entries(ESQUEMA_CORRECTO_NOTION).map(([nombre, tipo]) => [nombre === 'Feature' ? 'Tarea' : nombre, tipo]),
+);
+
+export const ESQUEMA_CORRECTO_NOTION_TAREAS_EN: Record<string, { type: string }> = Object.fromEntries(
+    Object.entries(ESQUEMA_CORRECTO_NOTION_EN).map(([nombre, tipo]) => [nombre === 'Feature' ? 'Task' : nombre, tipo]),
+);
