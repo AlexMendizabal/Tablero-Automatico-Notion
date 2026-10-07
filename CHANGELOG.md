@@ -38,9 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `TABLERO_CARPETA_TAREAS` empty or equal to `TABLERO_CARPETA` (after
-  normalization) is now a configuration error, reported before any Notion
-  call.
+- `TABLERO_CARPETA_TAREAS` explicitly set empty or equal to `TABLERO_CARPETA`
+  (after normalization) is now a configuration error, reported before any
+  Notion call. When `TABLERO_CARPETA_TAREAS` is not set and `TABLERO_CARPETA`
+  is the default tasks folder (`odd/tareas`), tasks are disabled instead and
+  the output is the features-only one.
 - The task frontmatter `feature` must be a valid document slug: not empty,
   not `.` or `..`, no leading or trailing whitespace (inner spaces and dots
   are fine, e.g. `mi feature` or `a..b`), and no `/`, `\`,

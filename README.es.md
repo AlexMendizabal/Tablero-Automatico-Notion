@@ -168,9 +168,11 @@ Variables opcionales, con su valor por defecto entre paréntesis:
   [Tareas avanzadas](#tareas-avanzadas-opcional)). Sin definir, las tareas no
   se escriben en Notion.
 - `TABLERO_CARPETA_TAREAS` (`odd/tareas`): carpeta donde viven los documentos
-  de tareas, relativa a la raíz del repositorio. No puede quedar vacía ni ser
-  la misma carpeta que `TABLERO_CARPETA`: en esos casos la corrida termina con
-  un error de configuración antes de llamar a Notion.
+  de tareas, relativa a la raíz del repositorio. Si se define, no puede quedar
+  vacía ni ser la misma carpeta que `TABLERO_CARPETA`: en esos casos la
+  corrida termina con un error de configuración antes de llamar a Notion. Si
+  no se define y `TABLERO_CARPETA` es `odd/tareas`, las tareas quedan
+  deshabilitadas y solo se sincronizan las features.
 
 ## Uso
 

@@ -163,9 +163,10 @@ Optional variables, with their default value in parentheses:
   advanced tasks (see [Advanced tasks](#advanced-tasks-optional)). Unset
   means tasks are not written to Notion.
 - `TABLERO_CARPETA_TAREAS` (`odd/tareas`): folder where the task documents
-  live, relative to the repository root. It cannot be empty or the same
-  folder as `TABLERO_CARPETA`: in those cases the run stops with a
-  configuration error before calling Notion.
+  live, relative to the repository root. If set, it cannot be empty or the
+  same folder as `TABLERO_CARPETA`: in those cases the run stops with a
+  configuration error before calling Notion. If unset and `TABLERO_CARPETA`
+  is `odd/tareas`, tasks are disabled and only features are synced.
 
 ## Usage
 

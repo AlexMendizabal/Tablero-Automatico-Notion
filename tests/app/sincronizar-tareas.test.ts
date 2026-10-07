@@ -15,7 +15,9 @@ import * as path from 'node:path';
 
 import { listarDocumentosODD } from '../../src/adapters/fs-node';
 import * as app from '../../src/app/sincronizar';
+import { resolverAjustesProyecto } from '../../src/core/ajustes';
 import { crearDescriptorFeature } from '../../src/core/entities/feature';
+import { componerDependencias } from '../../src/entrypoints/cli';
 import type { FetchInyectado } from '../../src/ports/notion';
 import type { DependenciasSincronizar, EjecutarComando, RepositorioGit } from '../../src/ports/sincronizar';
 import {
@@ -209,6 +211,47 @@ describe('sincronizar — carpeta de Tareas inválida (TABLERO_CARPETA_TAREAS)',
         expect(crearClienteNotion).not.toHaveBeenCalled();
         expect(listarDocumentos).not.toHaveBeenCalled();
     });
+});
+
+describe('sincronizar — proyecto solo de Features en la carpeta de Tareas por defecto', () => {
+    test.each([true, false])(
+        'TABLERO_CARPETA=odd/tareas sin TABLERO_CARPETA_TAREAS: Features se sincroniza igual y no hay bloque "Tareas:" (dry-run: %s)',
+        async (dryRun) => {
+            const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: 'odd/tareas' });
+            const correr = async (soloFeatures: boolean) => {
+                const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+                const lineas: string[] = [];
+                const carpetas: string[] = [];
+                const entrada = {
+                    raizRepo: '/repo',
+                    ejecutar: ejecutar(),
+                    fetchInyectado: notionFalso.fetchFalso,
+                    listarDocumentos: (carpeta: string) => {
+                        carpetas.push(carpeta);
+                        return documentosFeatures();
+                    },
+                    credenciales: dryRun ? null : { token: 'tok', databaseId: notionFalso.databaseId },
+                    hoy: HOY,
+                    ajustes,
+                    log: (l: string) => lineas.push(l),
+                };
+                const resumen: app.ResumenGeneral = soloFeatures
+                    ? await sincronizarEntidad(crearDescriptorFeature(ajustes), { dryRun }, entrada)
+                    : await app.sincronizar({ dryRun }, componerDependencias(entrada));
+                return { resumen, lineas, carpetas, paginas: notionFalso.paginas.size };
+            };
+
+            const soloFeatures = await correr(true);
+            const ambas = await correr(false);
+
+            expect(ambas.resumen.codigo).toBe(0);
+            expect(ambas.resumen.tareas).toBeUndefined();
+            expect(ambas.lineas).toEqual(soloFeatures.lineas);
+            expect(ambas.lineas).not.toContain('Tareas:');
+            expect(ambas.carpetas).toEqual(['odd/tareas']);
+            expect(ambas.paginas).toBe(dryRun ? 0 : 1);
+        },
+    );
 });
 
 // ---------------------------------------------------------------------------

@@ -62,6 +62,36 @@ describe('validarAjustesProyecto', () => {
     );
 });
 
+describe('resolverAjustesProyecto — carpeta de Tareas por defecto igual a la de Features', () => {
+    test.each(['odd/tareas', './odd/tareas/'])(
+        'TABLERO_CARPETA="%s" sin TABLERO_CARPETA_TAREAS deshabilita las Tareas (no es un error)',
+        (carpeta) => {
+            const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: carpeta });
+
+            expect(ajustes.tareasDeshabilitadas).toBe(true);
+            expect(validarAjustesProyecto(ajustes)).toBeNull();
+        },
+    );
+
+    test('con TABLERO_CARPETA_TAREAS explícita igual a la de Features, sigue siendo un error de configuración', () => {
+        const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: 'odd/tareas', TABLERO_CARPETA_TAREAS: 'odd/tareas' });
+
+        expect(ajustes.tareasDeshabilitadas).toBeUndefined();
+        expect(validarAjustesProyecto(ajustes)).toMatch(/^TABLERO_CARPETA_TAREAS \("odd\/tareas"\) es la misma carpeta/);
+    });
+
+    test('con TABLERO_CARPETA_TAREAS explícita vacía, sigue siendo un error de configuración', () => {
+        const ajustes = resolverAjustesProyecto({ TABLERO_CARPETA: 'odd/tareas', TABLERO_CARPETA_TAREAS: '' });
+
+        expect(ajustes.tareasDeshabilitadas).toBeUndefined();
+        expect(validarAjustesProyecto(ajustes)).toMatch(/^TABLERO_CARPETA_TAREAS está vacía/);
+    });
+
+    test('con carpetas distintas, las Tareas no se deshabilitan', () => {
+        expect(resolverAjustesProyecto({ TABLERO_CARPETA: 'docs/odd' })).not.toHaveProperty('tareasDeshabilitadas');
+    });
+});
+
 describe('AJUSTES_PROYECTO (adapters/config.ts)', () => {
     const previos = {
         carpeta: process.env.TABLERO_CARPETA,

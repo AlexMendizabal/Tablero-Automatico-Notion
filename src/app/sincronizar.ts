@@ -276,6 +276,10 @@ export async function sincronizar(
         ...dependencias,
         credenciales,
     });
+    // Tareas deshabilitadas (proyecto solo de Features cuya carpeta es la de
+    // Tareas por defecto): ni se lista su carpeta; la salida es la de Features.
+    if (dependencias.ajustes.tareasDeshabilitadas) return features;
+
     const conTareas = (tareas: ResumenSincronizacion): ResumenGeneral => ({
         ...features,
         codigo: Math.max(features.codigo, tareas.codigo),
