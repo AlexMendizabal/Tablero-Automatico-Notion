@@ -4,8 +4,8 @@
  * Tests de la relación "Feature" de las Tareas: el mapa slug → página de
  * Features que deja la sincronización de Features, la relación que escribe
  * cada Tarea (o vacía, con aviso), el salteo de Notion para las Tareas cuando
- * Features no terminó, y el detalle de la relación en "--dry-run" con
- * credenciales.
+ * Features no terminó, el detalle de la relación en "--dry-run" con
+ * credenciales, y que "Responsable" (propiedad de Notion) nunca se escribe.
  *
  * Como en el resto de los tests de la app, los documentos son strings
  * fixture (nunca se lee `odd/` real).
@@ -18,6 +18,9 @@ import {
     crearNotionFalsoTareas,
     docBase,
     ESQUEMA_CORRECTO_NOTION,
+    ESQUEMA_CORRECTO_NOTION_EN,
+    ESQUEMA_CORRECTO_NOTION_TAREAS,
+    ESQUEMA_CORRECTO_NOTION_TAREAS_EN,
     propiedadesMinimas,
 } from '../helpers/fixtures';
 import { sincronizar, sincronizarEntidad } from '../helpers/sincronizar-compuesto';
@@ -258,5 +261,58 @@ describe('sincronizar — "--dry-run" con credenciales muestra la relación', ()
             '  d → (sin feature padre: relación vacía)',
         ]);
         expect(bloqueTareas[6]).toBe('Crearía: 4');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// "Responsable": propiedad de Notion, nunca se escribe
+// ---------------------------------------------------------------------------
+
+describe('sincronizar — "Responsable" nunca viaja a Notion', () => {
+    test.each([
+        ['es', 'Responsable'],
+        ['en', 'Assignee'],
+    ] as const)('ni al crear ni al actualizar (con y sin reescritura de cuerpo) (idioma: %s)', async (idioma, nombre) => {
+        const documentosTareas = [
+            { slug: 'tarea-a', contenido: docTarea('padre') },
+            { slug: 'tarea-b', contenido: docTarea(null) },
+        ];
+        const features = crearNotionFalsoCompleto(idioma === 'es' ? ESQUEMA_CORRECTO_NOTION : ESQUEMA_CORRECTO_NOTION_EN);
+        const tareas = crearNotionFalsoTareas(idioma === 'es' ? ESQUEMA_CORRECTO_NOTION_TAREAS : ESQUEMA_CORRECTO_NOTION_TAREAS_EN);
+        const { fetchFalso } = combinarNotionFalsos(features, tareas);
+        const entrada = {
+            raizRepo: '/repo',
+            ejecutar: ejecutar(),
+            fetchInyectado: fetchFalso,
+            listarDocumentos: () => [{ slug: 'padre', contenido: docFeature('Padre') }],
+            listarDocumentosTareas: () => documentosTareas,
+            credenciales: { token: 'tok', databaseId: features.databaseId, databaseIdTareas: tareas.databaseId },
+            hoy: HOY,
+            idioma,
+        };
+
+        // 1.ª corrida: altas.
+        const primera = await sincronizar({ dryRun: false }, entrada);
+        // Alguien asigna el Responsable a mano en Notion; "tarea-b" queda con
+        // una huella vieja para forzar la reescritura de su cuerpo.
+        const asignado = { people: [{ object: 'user', id: 'usuario-1' }] };
+        for (const pagina of tareas.paginas.values()) pagina.properties[nombre] = asignado;
+        const huella = idioma === 'es' ? 'Huella' : 'Fingerprint';
+        const paginaB = [...tareas.paginas.values()].find((p) => JSON.stringify(p.properties.Slug).includes('"tarea-b"'));
+        if (paginaB) paginaB.properties[huella] = { rich_text: [{ type: 'text', text: { content: 'vieja' } }] };
+        // 2.ª corrida: actualizaciones (tarea-a sin reescribir, tarea-b reescribiendo).
+        const segunda = await sincronizar({ dryRun: false }, entrada);
+
+        expect(primera.tareas?.creadas).toBe(2);
+        expect(segunda.tareas?.actualizadas).toBe(2);
+        expect(segunda.tareas?.cuerposReescritos).toBe(1);
+        const escrituras = tareas.solicitudes.filter((s) => s.metodo === 'POST' || s.metodo === 'PATCH');
+        expect(escrituras.some((s) => s.ruta === '/pages')).toBe(true);
+        expect(escrituras.some((s) => s.ruta.startsWith('/pages/'))).toBe(true);
+        for (const solicitud of [...tareas.solicitudes, ...features.solicitudes]) {
+            expect(solicitud.cuerpo).not.toContain(nombre);
+            expect(solicitud.cuerpo).not.toContain('"people"');
+        }
+        for (const pagina of tareas.paginas.values()) expect(pagina.properties[nombre]).toEqual(asignado);
     });
 });

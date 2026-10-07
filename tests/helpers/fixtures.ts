@@ -162,6 +162,9 @@ export function crearNotionFalsoCompleto(esquema: Record<string, PropiedadEsquem
     let contadorBloque = 1;
     const paginas = new Map<string, PaginaFalsa>();
     const llamadas = { crearPagina: 0, actualizarPropiedades: 0, borrarBloque: 0, agregarHijos: 0 };
+    /** Todos los pedidos recibidos, en orden, con su cuerpo crudo ("" si no
+     *  tiene): para asertar qué viajó (o qué nunca viajó) a Notion. */
+    const solicitudes: Array<{ metodo: string; ruta: string; cuerpo: string }> = [];
 
     // Permite simular que una operación puntual falla (para probar que la
     // Huella se escribe al final, ver fix "Huella al final" del review de
@@ -183,6 +186,7 @@ export function crearNotionFalsoCompleto(esquema: Record<string, PropiedadEsquem
         const ruta = url.replace('https://api.notion.com/v1', '');
         const metodo = init.method;
         const cuerpo = init.body ? JSON.parse(init.body) : undefined;
+        solicitudes.push({ metodo, ruta, cuerpo: init.body ?? '' });
 
         if (metodo === 'GET' && ruta === `/databases/${databaseId}`) {
             return respuestaFalsa(200, { data_sources: [{ id: dataSourceId, name: 'Tablero' }] });
@@ -254,6 +258,7 @@ export function crearNotionFalsoCompleto(esquema: Record<string, PropiedadEsquem
         fetchFalso,
         paginas,
         llamadas,
+        solicitudes,
         databaseId,
         dataSourceId,
         prefijoIds,
