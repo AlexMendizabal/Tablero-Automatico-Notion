@@ -140,6 +140,33 @@ describe('sincronizar — carpeta de cada entidad', () => {
     });
 });
 
+describe('sincronizar — carpeta de Tareas inválida (TABLERO_CARPETA_TAREAS)', () => {
+    test.each([
+        ['vacía', '', /^TABLERO_CARPETA_TAREAS está vacía/],
+        ['igual a la de Features', './odd/tasks/', /^TABLERO_CARPETA_TAREAS \(".\/odd\/tasks\/"\) es la misma carpeta que TABLERO_CARPETA/],
+    ])('%s: error de configuración con código 1, antes de cualquier llamada a Notion', async (_caso, carpetaTareas, mensaje) => {
+        const lineas: string[] = [];
+        const crearClienteNotion = jest.fn();
+        const listarDocumentos = jest.fn(() => documentosFeatures());
+
+        const resumen = await app.sincronizar(
+            { dryRun: false },
+            puertosFalsos(listarDocumentos, {
+                ajustes: { ...AJUSTES, carpetaTareas },
+                credenciales: { token: 'tok', databaseId: '0123456789abcdef0123456789abcdef' },
+                crearClienteNotion,
+                log: (l) => lineas.push(l),
+            }),
+        );
+
+        expect(resumen.codigo).toBe(1);
+        expect(lineas).toHaveLength(1);
+        expect(lineas[0]).toMatch(mensaje);
+        expect(crearClienteNotion).not.toHaveBeenCalled();
+        expect(listarDocumentos).not.toHaveBeenCalled();
+    });
+});
+
 // ---------------------------------------------------------------------------
 // "--dry-run" sin credenciales: bloque de Tareas
 // ---------------------------------------------------------------------------

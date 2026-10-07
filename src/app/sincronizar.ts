@@ -2,6 +2,7 @@
  * Orquestación del sync: lee documentos, calcula filas, valida contra Notion
  * y escribe (o solo informa, con "--dry-run").
  */
+import { validarAjustesProyecto } from '../core/ajustes';
 import { mensajeDeError } from '../core/errores';
 import { type ResultadoIdioma, resolverIdiomaTablero } from '../core/i18n';
 import { normalizarIdBaseNotion } from '../core/id-notion';
@@ -148,6 +149,7 @@ function imprimirAvisos(log: (linea: string) => void, avisos: AvisoDocumento[] |
 const RAZON_ID_INVALIDO = 'el ID de la base de Notion no es válido';
 const RAZON_ESQUEMA_INVALIDO = 'el esquema de la base de Notion no coincide';
 const RAZON_IDIOMA_INVALIDO = 'el idioma del tablero (BOARD_LANGUAGE) no es válido';
+const RAZON_AJUSTES_INVALIDOS = 'las carpetas de documentos no son válidas';
 
 /** Construye y loguea el resumen de un fallo de entorno (carpeta faltante,
  *  git no disponible, clon superficial con anclas declaradas): código 1,
@@ -211,6 +213,23 @@ export async function sincronizar(
     dependencias: DependenciasSincronizar,
 ): Promise<ResumenGeneral> {
     const log = dependencias.log ?? (() => {});
+    // Carpetas mal configuradas: error de configuración antes de leer nada
+    // o de llamar a Notion (ni siquiera se sincronizan las Features).
+    const errorAjustes = validarAjustesProyecto(dependencias.ajustes);
+    if (errorAjustes !== null) {
+        log(errorAjustes);
+        return {
+            entidad: 'feature',
+            codigo: 1,
+            creadas: 0,
+            actualizadas: 0,
+            cuerposReescritos: 0,
+            huerfanas: [],
+            erroresDeFormato: [],
+            consultoNotion: false,
+            razonNoCalculado: RAZON_AJUSTES_INVALIDOS,
+        };
+    }
     // Se cargan una sola vez para las dos entidades.
     const credenciales =
         dependencias.credenciales !== undefined

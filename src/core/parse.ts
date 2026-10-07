@@ -55,6 +55,19 @@ export const FORMATO_FRONTMATTER_TAREA: FormatoFrontmatter = {
 export type ResultadoParseoConFormato =
     | { ok: true; documento: DocumentoODD; feature: string | null }
     | { ok: false; errores: string[] };
+/** Caracteres que no pueden ir en el slug de un documento: espacios,
+ *  separadores de ruta (`/`, `\`), los que un nombre de archivo de Windows no
+ *  admite (`< > : " | ? *`) y los de control. */
+const REGEX_CARACTER_INVALIDO_SLUG = /[\s/\\<>:"|?*\u0000-\u001f\u007f]/;
+
+/** `true` si `slug` puede ser el nombre de un documento sin ".md" (el slug de
+ *  un documento sale de su nombre de archivo, ver `listarDocumentosODD`): no
+ *  vacío, sin los caracteres de `REGEX_CARACTER_INVALIDO_SLUG` y sin "..",
+ *  para que nunca apunte fuera de su carpeta. */
+export function esSlugDocumentoValido(slug: string): boolean {
+    return slug !== '' && slug !== '.' && !slug.includes('..') && !REGEX_CARACTER_INVALIDO_SLUG.test(slug);
+}
+
 /** Hash de commit: hexadecimal en minúscula, EXACTAMENTE 40 caracteres (hash
  *  completo). El contrato lo exige completo a propósito: uno abreviado puede
  *  volverse ambiguo cuando el repo crece. */
@@ -240,7 +253,13 @@ export function parsearDocumentoConFormato(
                     valor = undefined;
                 }
                 if (typeof valor === 'string' && valor.trim() !== '') {
-                    feature = valor.trim();
+                    if (esSlugDocumentoValido(valor.trim())) {
+                        feature = valor.trim();
+                    } else {
+                        errores.push(
+                            `Frontmatter faltante o inválido: 'feature' no es un slug válido (${JSON.stringify(valor.trim())}): debe ser el nombre de un documento de Features sin ".md", sin espacios, "/", "\\", "..", ni ninguno de < > : " | ? *.`,
+                        );
+                    }
                 } else {
                     errores.push(
                         "Frontmatter faltante o inválido: 'feature' debe ser un string JSON no vacío con comillas dobles (el slug de la feature padre).",

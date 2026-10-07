@@ -50,3 +50,29 @@ export function resolverAjustesProyecto(entorno: Readonly<Record<string, string 
         ramaBaseDocumento: entorno.TABLERO_RAMA_BASE ?? AJUSTES_POR_DEFECTO.ramaBaseDocumento,
     };
 }
+
+/** Forma canónica de una carpeta relativa, para comparar dos carpetas: sin
+ *  espacios en los extremos, con `/` como separador, sin segmentos vacíos ni
+ *  `.`. `''` si no queda nada (ej. `'./'`). */
+export function normalizarCarpeta(carpeta: string): string {
+    return carpeta
+        .trim()
+        .replace(/\\/g, '/')
+        .split('/')
+        .filter((segmento) => segmento !== '' && segmento !== '.')
+        .join('/');
+}
+
+/** Error de configuración de los ajustes (o `null` si son válidos): la
+ *  carpeta de Tareas no puede quedar vacía ni ser la misma que la de
+ *  Features (sus documentos se leerían como Tareas y como Features). */
+export function validarAjustesProyecto(ajustes: AjustesProyecto): string | null {
+    const carpetaTareas = normalizarCarpeta(ajustes.carpetaTareas);
+    if (carpetaTareas === '') {
+        return `TABLERO_CARPETA_TAREAS está vacía: indicá la carpeta de los documentos de Tareas (por defecto, ${AJUSTES_POR_DEFECTO.carpetaTareas}).`;
+    }
+    if (carpetaTareas === normalizarCarpeta(ajustes.carpetaFeatures)) {
+        return `TABLERO_CARPETA_TAREAS ("${ajustes.carpetaTareas}") es la misma carpeta que TABLERO_CARPETA ("${ajustes.carpetaFeatures}"): las Tareas necesitan su propia carpeta.`;
+    }
+    return null;
+}

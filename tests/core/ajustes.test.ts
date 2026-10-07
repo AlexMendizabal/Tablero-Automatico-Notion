@@ -9,7 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { cargarCredenciales } from '../../src/adapters/config';
-import { AJUSTES_POR_DEFECTO, resolverAjustesProyecto } from '../../src/core/ajustes';
+import { AJUSTES_POR_DEFECTO, resolverAjustesProyecto, validarAjustesProyecto } from '../../src/core/ajustes';
 
 describe('resolverAjustesProyecto', () => {
     test('sin variables, los valores por defecto', () => {
@@ -36,6 +36,30 @@ describe('resolverAjustesProyecto', () => {
         expect(resolverAjustesProyecto({ TABLERO_CARPETA: '' }).carpetaFeatures).toBe('');
         expect(resolverAjustesProyecto({ TABLERO_CARPETA_TAREAS: '' }).carpetaTareas).toBe('');
     });
+});
+
+describe('validarAjustesProyecto', () => {
+    test('los valores por defecto y carpetas distintas son válidos', () => {
+        expect(validarAjustesProyecto(AJUSTES_POR_DEFECTO)).toBeNull();
+        expect(validarAjustesProyecto({ ...AJUSTES_POR_DEFECTO, carpetaTareas: 'odd/tasks/tareas' })).toBeNull();
+    });
+
+    test.each(['', '   ', '.', './'])('TABLERO_CARPETA_TAREAS vacía ("%s") es un error de configuración', (carpetaTareas) => {
+        expect(validarAjustesProyecto({ ...AJUSTES_POR_DEFECTO, carpetaTareas })).toBe(
+            'TABLERO_CARPETA_TAREAS está vacía: indicá la carpeta de los documentos de Tareas (por defecto, odd/tareas).',
+        );
+    });
+
+    test.each(['odd/tasks', './odd/tasks/', 'odd//tasks', 'odd\\tasks', ' odd/tasks '])(
+        'TABLERO_CARPETA_TAREAS igual a la carpeta de Features ("%s") es un error de configuración',
+        (carpetaTareas) => {
+            expect(validarAjustesProyecto({ ...AJUSTES_POR_DEFECTO, carpetaTareas })).toBe(
+                'TABLERO_CARPETA_TAREAS ("' +
+                    carpetaTareas +
+                    '") es la misma carpeta que TABLERO_CARPETA ("odd/tasks"): las Tareas necesitan su propia carpeta.',
+            );
+        },
+    );
 });
 
 describe('AJUSTES_PROYECTO (adapters/config.ts)', () => {
