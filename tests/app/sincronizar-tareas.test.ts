@@ -9,6 +9,11 @@
  * Como en el resto de los tests de la app, los documentos son strings
  * fixture (nunca se lee `odd/` real).
  */
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import { listarDocumentosODD } from '../../src/adapters/fs-node';
 import * as app from '../../src/app/sincronizar';
 import { crearDescriptorFeature } from '../../src/core/entities/feature';
 import type { FetchInyectado } from '../../src/ports/notion';
@@ -116,6 +121,43 @@ describe('sincronizar — sin documentos de Tareas', () => {
         await app.sincronizar({ dryRun: true }, puertosFalsos(listarDocumentos, { log: (l) => lineas.push(l) }));
 
         expect(lineas).toEqual(lineasSoloFeatures);
+    });
+});
+
+describe('sincronizar — carpeta de Tareas ilegible', () => {
+    let raiz: string;
+    beforeEach(() => {
+        raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'tablero-tareas-'));
+        fs.mkdirSync(path.join(raiz, 'odd', 'tasks'), { recursive: true });
+        fs.writeFileSync(path.join(raiz, 'odd', 'tasks', 'feature-x.md'), docBase());
+        // "odd/tareas" existe, pero es un archivo: no es ENOENT.
+        fs.writeFileSync(path.join(raiz, 'odd', 'tareas'), 'no soy una carpeta');
+    });
+    afterEach(() => fs.rmSync(raiz, { recursive: true, force: true }));
+
+    test('un error de lectura distinto de ENOENT es error de entorno de Tareas; Features no cambia', async () => {
+        const lineas: string[] = [];
+        const lineasSoloFeatures: string[] = [];
+        const listarDocumentos: DependenciasSincronizar['listarDocumentos'] = (carpeta, opciones) =>
+            listarDocumentosODD(raiz, carpeta, opciones);
+
+        const resumen = await app.sincronizar(
+            { dryRun: true },
+            puertosFalsos(listarDocumentos, { log: (l) => lineas.push(l) }),
+        );
+        const soloFeatures = await app.sincronizarEntidad(
+            crearDescriptorFeature(AJUSTES),
+            { dryRun: true },
+            puertosFalsos(listarDocumentos, { log: (l) => lineasSoloFeatures.push(l) }),
+        );
+
+        expect(soloFeatures.codigo).toBe(0);
+        expect(resumen.tareas?.codigo).toBe(1);
+        expect(resumen.codigo).toBe(1);
+        const inicioTareas = lineas.indexOf('Tareas:');
+        expect(lineas.slice(0, inicioTareas - 1)).toEqual(lineasSoloFeatures);
+        expect(lineas.slice(inicioTareas - 1, inicioTareas + 1)).toEqual(['', 'Tareas:']);
+        expect(lineas.slice(inicioTareas + 1)).toEqual([expect.stringMatching(/^Error de entorno: .*"odd\/tareas"/)]);
     });
 });
 
@@ -402,6 +444,33 @@ describe('sincronizar — sin NOTION_TAREAS_DB_ID', () => {
         },
     );
 
+    test('un NOTION_TAREAS_DB_ID vacío cuenta como ausente: Tareas no toca Notion', async () => {
+        const features = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const tareas = crearNotionFalsoTareas();
+        const { fetchFalso, orden } = combinarNotionFalsos(features, tareas);
+        const lineas: string[] = [];
+
+        const resumen = await sincronizar(
+            { dryRun: false },
+            {
+                raizRepo: '/repo',
+                ejecutar: ejecutar(),
+                fetchInyectado: fetchFalso,
+                listarDocumentos: documentosFeatures,
+                listarDocumentosTareas: documentosTareas(),
+                credenciales: { token: 'tok', databaseId: features.databaseId, databaseIdTareas: '' },
+                hoy: HOY,
+                log: (l) => lineas.push(l),
+            },
+        );
+
+        expect(resumen.codigo).toBe(0);
+        expect(orden).not.toContain('tareas');
+        expect(lineas[lineas.indexOf('Tareas:') + 1]).toBe(
+            'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.',
+        );
+    });
+
     test('sin ninguna credencial y sin "--dry-run", Tareas no agrega nada al error de Features', async () => {
         const lineas: string[] = [];
         const lineasSinTareas: string[] = [];
@@ -571,6 +640,8 @@ describe('sincronizar — ajustes explícitos distintos de los por defecto', () 
         );
 
         expect(resumen.codigo).toBe(0);
+        expect(features.paginas.size).toBe(1);
+        expect(tareas.paginas.size).toBe(1);
         expect(carpetasLeidas).toEqual(['docs/features', 'docs/tareas']);
         expect(rutasFechadas).toEqual(['docs/features/feature-x.md', 'docs/tareas/tarea-x.md']);
         expect([...features.paginas.values()][0].properties.Documento).toEqual({

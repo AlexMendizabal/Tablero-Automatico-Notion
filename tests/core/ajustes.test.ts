@@ -130,6 +130,14 @@ describe('cargarCredenciales (adapters/config.ts)', () => {
         });
     });
 
+    test('un NOTION_TAREAS_DB_ID vacío cuenta como ausente', () => {
+        process.env.NOTION_TOKEN = 'tok';
+        process.env.NOTION_TABLERO_DB_ID = 'base-features';
+        process.env.NOTION_TAREAS_DB_ID = '';
+
+        expect(cargarCredenciales(raizSinEnv)).toEqual({ token: 'tok', databaseId: 'base-features' });
+    });
+
     test('sin NOTION_TOKEN no hay credenciales, aunque NOTION_TAREAS_DB_ID esté definido', () => {
         delete process.env.NOTION_TOKEN;
         process.env.NOTION_TABLERO_DB_ID = 'base-features';
