@@ -239,6 +239,45 @@ describe('sincronizar — feature padre inexistente', () => {
         expect(lineas.slice(inicioTareas).some((l) => l.startsWith('tarea-x '))).toBe(true);
     });
 
+    test.each([
+        ['repositorio superficial', { superficial: true }],
+        ['git no disponible', { gitNoDisponible: true }],
+    ])('el aviso se imprime también en el retorno temprano por %s', async (_caso, entorno) => {
+        const lineas: string[] = [];
+        const sha = 'a'.repeat(40);
+        const frontmatter = ['---', 'ramas: ["feat/t*"]', `commits: ["${sha}"]`, 'feature: "no-existe"', '---'].join('\n');
+        const base = ejecutar();
+        // git solo "falla" para las Tareas (las únicas que declaran commits).
+        const ejecutarEntorno: EjecutarComando = (comando, args) =>
+            comando === 'git' && args[0] === 'rev-parse'
+                ? crearEjecutarFalso({ ...entorno })(comando, args)
+                : base(comando, args);
+
+        const resumen = await sincronizar(
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                ejecutar: ejecutarEntorno,
+                fetchInyectado: jest.fn() as unknown as FetchInyectado,
+                listarDocumentos: documentosFeatures,
+                listarDocumentosTareas: () => [{ slug: 'tarea-x', contenido: docBase({ frontmatter }) }],
+                credenciales: null,
+                hoy: HOY,
+                log: (l) => lineas.push(l),
+            },
+        );
+
+        expect(resumen.codigo).toBe(1);
+        expect(resumen.tareas?.avisos?.map((a) => a.slug)).toEqual(['tarea-x']);
+        const bloqueTareas = lineas.slice(lineas.indexOf('Tareas:'));
+        expect(bloqueTareas[1]).toMatch(/^Error de entorno: /);
+        expect(bloqueTareas.slice(2)).toEqual([
+            'Avisos: 1',
+            '  tarea-x:',
+            '    - La feature padre "no-existe" no existe: no hay ningún documento "no-existe.md" en "odd/tasks".',
+        ]);
+    });
+
     test('una tarea sin padre, o con un padre que existe, no genera avisos', async () => {
         const lineas: string[] = [];
         const resumen = await sincronizar(
@@ -288,13 +327,53 @@ describe('sincronizar — sin NOTION_TAREAS_DB_ID', () => {
 
         expect(resumen.codigo).toBe(0);
         expect(resumen.creadas).toBe(1);
-        expect(resumen.tareas).toBeUndefined();
+        expect(resumen.tareas?.codigo).toBe(0);
+        expect(resumen.tareas?.consultoNotion).toBe(false);
         expect(notionFalso.paginas.size).toBe(1);
-        expect(lineas.slice(-2)).toEqual([
+        expect(lineas.slice(lineas.indexOf('Tareas:'))).toEqual([
             'Tareas:',
             'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.',
+            'Plan de escritura: no calculado (no se consultó Notion).',
+            'Errores de formato: 0',
         ]);
     });
+
+    test.each([false, true])(
+        'las Tareas se validan igual: un error de formato da código 1 y el aviso de padre se imprime (dry-run: %s)',
+        async (dryRun) => {
+            const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+            const lineas: string[] = [];
+
+            const resumen = await sincronizar(
+                { dryRun },
+                {
+                    raizRepo: '/repo',
+                    ejecutar: ejecutar(),
+                    fetchInyectado: notionFalso.fetchFalso,
+                    listarDocumentos: documentosFeatures,
+                    listarDocumentosTareas: () => [
+                        { slug: 'huerfana', contenido: docTarea('no-existe') },
+                        { slug: 'rota', contenido: '# sin frontmatter' },
+                    ],
+                    credenciales: { token: 'tok', databaseId: notionFalso.databaseId },
+                    hoy: HOY,
+                    log: (l) => lineas.push(l),
+                },
+            );
+
+            expect(resumen.erroresDeFormato).toEqual([]);
+            expect(resumen.tareas?.erroresDeFormato.map((e) => e.slug)).toEqual(['rota']);
+            expect(resumen.tareas?.avisos?.map((a) => a.slug)).toEqual(['huerfana']);
+            expect(resumen.codigo).toBe(1);
+            const bloqueTareas = lineas.slice(lineas.indexOf('Tareas:'));
+            expect(bloqueTareas[1]).toBe(
+                'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.',
+            );
+            expect(bloqueTareas).toEqual(
+                expect.arrayContaining(['Avisos: 1', '  huerfana:', 'Errores de formato: 1', '  rota:']),
+            );
+        },
+    );
 
     test('sin ninguna credencial y sin "--dry-run", Tareas no agrega nada al error de Features', async () => {
         const lineas: string[] = [];

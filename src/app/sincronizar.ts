@@ -120,17 +120,23 @@ function imprimirResumenFinal(log: (linea: string) => void, resumen: ResumenSinc
             log(`  ${duplicado.slug}: ${duplicado.pageIds.join(', ')}`);
         }
     }
-    if (resumen.avisos && resumen.avisos.length > 0) {
-        log(`Avisos: ${resumen.avisos.length}`);
-        for (const aviso of resumen.avisos) {
-            log(`  ${aviso.slug}:`);
-            for (const mensaje of aviso.mensajes) log(`    - ${mensaje}`);
-        }
-    }
+    imprimirAvisos(log, resumen.avisos);
     log(`Errores de formato: ${resumen.erroresDeFormato.length}`);
     for (const error of resumen.erroresDeFormato) {
         log(`  ${error.slug}:`);
         for (const mensaje of error.errores) log(`    - ${mensaje}`);
+    }
+}
+
+/** Bloque "Avisos: N" (nada si no hay avisos). Lo usan el resumen final y
+ *  los retornos tempranos por error de entorno, para que el log diga lo mismo
+ *  que el resumen devuelto. */
+function imprimirAvisos(log: (linea: string) => void, avisos: AvisoDocumento[] | undefined): void {
+    if (!avisos || avisos.length === 0) return;
+    log(`Avisos: ${avisos.length}`);
+    for (const aviso of avisos) {
+        log(`  ${aviso.slug}:`);
+        for (const mensaje of aviso.mensajes) log(`    - ${mensaje}`);
     }
 }
 
@@ -191,8 +197,9 @@ const MENSAJE_SIN_BASE_TAREAS =
  *   hacen nada ni imprimen nada — la salida es la de solo Features.
  * - Con documentos, su salida va después de la de Features, bajo una línea
  *   "Tareas:".
- * - Con credenciales pero sin `NOTION_TAREAS_DB_ID`: se saltean con una
- *   línea informativa (el código de salida no cambia).
+ * - Con credenciales pero sin `NOTION_TAREAS_DB_ID`: se omite Notion con una
+ *   línea informativa, pero sus documentos se validan igual (un error de
+ *   formato da código 1; los avisos se imprimen).
  * - Sin credenciales y sin "--dry-run": se saltean en silencio (Features ya
  *   informó la falta de credenciales, con código 1).
  * - Una tarea cuya feature padre no existe genera un aviso, no un error.
@@ -238,21 +245,35 @@ export async function sincronizar(
 
     log('');
     log('Tareas:');
-    if (credenciales && !credenciales.databaseIdTareas) {
-        log(MENSAJE_SIN_BASE_TAREAS);
-        return features;
-    }
+    // Sin base de Tareas, sus documentos se validan igual (errores de
+    // formato, avisos de feature padre): solo se omite Notion.
+    const sinBaseTareas = credenciales !== null && !credenciales.databaseIdTareas;
+    if (sinBaseTareas) log(MENSAJE_SIN_BASE_TAREAS);
 
-    const tareas = await sincronizarEntidad(descriptorTarea, opciones, {
-        ...dependencias,
-        // Ya leídos (y no vacíos) más arriba.
-        listarDocumentos: () => documentosTareas,
-        credenciales:
-            credenciales && credenciales.databaseIdTareas
-                ? { token: credenciales.token, databaseId: credenciales.databaseIdTareas }
-                : null,
-    });
+    const tareas = await sincronizarEntidad(
+        descriptorTarea,
+        opciones,
+        {
+            ...dependencias,
+            // Ya leídos (y no vacíos) más arriba.
+            listarDocumentos: () => documentosTareas,
+            credenciales:
+                credenciales && credenciales.databaseIdTareas
+                    ? { token: credenciales.token, databaseId: credenciales.databaseIdTareas }
+                    : null,
+        },
+        { omitirNotion: sinBaseTareas },
+    );
     return conTareas(tareas);
+}
+
+/** Lo que `sincronizar` le pasa a una entidad además de sus dependencias. */
+export interface ContextoEntidad {
+    /** Valida los documentos (parseo, anclas de "commits", filas, avisos)
+     *  sin consultar Notion ni exigir credenciales, y cierra con el resumen
+     *  de "no se consultó Notion". Lo usan las Tareas cuando no se las puede
+     *  escribir (ej. sin `NOTION_TAREAS_DB_ID`). */
+    omitirNotion?: boolean;
 }
 
 /**
@@ -270,6 +291,7 @@ export async function sincronizarEntidad<
     descriptor: DescriptorEntidad<C, E, D, F>,
     opciones: OpcionesCLI,
     dependencias: DependenciasSincronizar,
+    contexto: ContextoEntidad = {},
 ): Promise<ResumenSincronizacion> {
     const entidad = descriptor.clave;
     const log = dependencias.log ?? (() => {});
@@ -308,11 +330,19 @@ export async function sincronizarEntidad<
         imprimirResumenFinal(log, completo);
         return completo;
     };
+    // Error de entorno: su línea y, si hay, los avisos (para que el log
+    // coincida con el resumen devuelto).
+    const cerrarPorEntorno = (mensaje: string): ResumenSincronizacion => {
+        const completo = completar(resumenDeErrorEntorno(log, entidad, mensaje));
+        imprimirAvisos(log, completo.avisos);
+        return completo;
+    };
 
-    let credenciales =
-        dependencias.credenciales !== undefined
-            ? dependencias.credenciales
-            : dependencias.configuracion.cargarCredenciales(dependencias.raizRepo);
+    let credenciales = contexto.omitirNotion
+        ? null
+        : dependencias.credenciales !== undefined
+          ? dependencias.credenciales
+          : dependencias.configuracion.cargarCredenciales(dependencias.raizRepo);
 
     // El idioma se resuelve DESPUÉS de cargar el ".env" (lo hace
     // "cargarCredenciales"), para que BOARD_LANGUAGE pueda vivir ahí también.
@@ -363,7 +393,7 @@ export async function sincronizarEntidad<
         credenciales = { ...credenciales, databaseId: resultadoId.id };
     }
 
-    if (!credenciales && !opciones.dryRun) {
+    if (!credenciales && !opciones.dryRun && !contexto.omitirNotion) {
         log(
             'Faltan NOTION_TOKEN y/o NOTION_TABLERO_DB_ID. No se realizó ninguna llamada de red ni de Notion.',
         );
@@ -397,18 +427,14 @@ export async function sincronizarEntidad<
         try {
             esSuperficial = dependencias.repositorio.esRepoSuperficial();
         } catch (error) {
-            return completar(resumenDeErrorEntorno(
-                log,
-                entidad,
+            return cerrarPorEntorno(
                 `No se pudo determinar si el repositorio es superficial (¿git no está disponible?): ${mensajeDeError(error)}`,
-            ));
+            );
         }
         if (esSuperficial) {
-            return completar(resumenDeErrorEntorno(
-                log,
-                entidad,
+            return cerrarPorEntorno(
                 'Repositorio superficial: las anclas de "commits" requieren un clon completo (fetch-depth: 0).',
-            ));
+            );
         }
     }
 
@@ -458,21 +484,25 @@ export async function sincronizarEntidad<
         }),
     );
 
+    const resumenSinNotion = (): ResumenSincronizacion => ({
+        entidad,
+        codigo: erroresDeFormato.length > 0 ? 1 : 0,
+        creadas: 0,
+        actualizadas: 0,
+        cuerposReescritos: 0,
+        huerfanas: [],
+        erroresDeFormato,
+        consultoNotion: false,
+    });
+
+    // Validado todo lo que no depende de Notion: sin escribir (ni leer) nada.
+    if (contexto.omitirNotion) return cerrar(resumenSinNotion());
+
     if (!credenciales) {
         log('--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:');
         log(descriptor.encabezadoFilaLegible);
         for (const fila of filas) log(descriptor.formatearFilaLegible(fila));
-        const resumen: ResumenSincronizacion = {
-            entidad,
-            codigo: erroresDeFormato.length > 0 ? 1 : 0,
-            creadas: 0,
-            actualizadas: 0,
-            cuerposReescritos: 0,
-            huerfanas: [],
-            erroresDeFormato,
-            consultoNotion: false,
-        };
-        return cerrar(resumen);
+        return cerrar(resumenSinNotion());
     }
 
     const cliente = dependencias.crearClienteNotion(credenciales.token);
