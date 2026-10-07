@@ -17,7 +17,10 @@ import * as path from 'node:path';
 
 import dotenv from 'dotenv';
 
+import { CARPETA_TAREAS, RAMA_BASE_DOCUMENTO } from './core/ajustes';
+import { mensajeDeError } from './core/errores';
 import { type Idioma, type ResultadoIdioma, TEXTOS_POR_IDIOMA, resolverIdiomaTablero } from './core/i18n';
+import { normalizarIdBaseNotion } from './core/id-notion';
 import { construirValoresPropiedades, traducirPropiedades, validarEsquema } from './core/schema';
 import type {
     DocumentoODD,
@@ -34,83 +37,24 @@ import type {
     ResultadoParseoDocumento,
     TareaDocumento,
 } from './core/types';
+import type { ClienteNotion, Credenciales, Dormir, FetchInyectado } from './ports/notion';
+import type { DependenciasSincronizar, EjecutarComando } from './ports/sincronizar';
 
-// Re-exports transitorios: el núcleo se está mudando a `src/core`, y este
-// archivo mantiene su API pública mientras dura la migración.
+// Re-exports transitorios: el núcleo se está mudando a `src/core` (y los
+// puertos a `src/ports`), y este archivo mantiene su API pública mientras
+// dura la migración.
+export * from './core/ajustes';
+export * from './core/errores';
 export * from './core/i18n';
+export * from './core/id-notion';
 export * from './core/schema';
 export * from './core/types';
-
-// ---------------------------------------------------------------------------
-// === Ajustes por proyecto ===
-//
-// Estos dos valores son los únicos que hace falta tocar para adaptar este
-// script a un repositorio distinto del que sirvió de plantilla. Cada uno se
-// puede fijar por variable de entorno (documentada en el README y en
-// `.env.example`) o dejar en su valor por defecto.
-// ---------------------------------------------------------------------------
-
-/** Carpeta (relativa a la raíz del repositorio) donde viven los documentos
- *  ODD (`<carpeta>/*.md`). Variable de entorno: `TABLERO_CARPETA`. */
-export const CARPETA_TAREAS = process.env.TABLERO_CARPETA ?? 'odd/tasks';
-
-/** Rama base que arma el enlace "Documento" de cada fila del tablero:
- *  `https://github.com/<owner>/<repo>/blob/<esta rama>/<CARPETA_TAREAS>/<slug>.md`.
- *  Normalmente es la rama por defecto del repositorio. Variable de entorno:
- *  `TABLERO_RAMA_BASE`. */
-export const RAMA_BASE_DOCUMENTO = process.env.TABLERO_RAMA_BASE ?? 'main';
+export * from './ports/notion';
+export * from './ports/sincronizar';
 
 // ---------------------------------------------------------------------------
 // Tipos del núcleo puro
 // ---------------------------------------------------------------------------
-
-export type EjecutarComando = (comando: string, argumentos: string[]) => string;
-
-export type FetchInyectado = (
-    url: string,
-    init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
-) => Promise<{ status: number; headers: { get(nombre: string): string | null }; text(): Promise<string> }>;
-
-export type Dormir = (ms: number) => Promise<void>;
-
-export interface Credenciales {
-    token: string;
-    databaseId: string;
-}
-
-export interface ClienteNotion {
-    obtenerDataSourceId(databaseId: string): Promise<string>;
-    obtenerEsquema(dataSourceId: string): Promise<Record<string, { type: string }>>;
-    listarTodasLasPaginas(
-        dataSourceId: string,
-    ): Promise<Array<{ id: string; properties: PropiedadesNotionBrutas; createdTime: string }>>;
-    /** `propiedades` (ya con los nombres visibles del idioma del tablero)
-     *  puede venir SIN la huella: el llamador la escribe aparte, al final,
-     *  una vez que el cuerpo quedó completo (ver "Orquestación"). */
-    crearPagina(
-        dataSourceId: string,
-        propiedades: PropiedadesNotionBrutas,
-        tareas: TareaDocumento[],
-    ): Promise<string>;
-    actualizarPropiedades(pageId: string, propiedades: PropiedadesNotionBrutas): Promise<void>;
-    reescribirCuerpo(pageId: string, tareas: TareaDocumento[]): Promise<void>;
-}
-
-export interface DependenciasSincronizar {
-    raizRepo: string;
-    ejecutar: EjecutarComando;
-    fetchInyectado: FetchInyectado;
-    listarDocumentos: () => Array<{ slug: string; contenido: string }>;
-    dormir?: Dormir;
-    hoy?: Date;
-    /** `undefined` → se cargan desde el entorno (uso real, `principal()`).
-     *  `null` → sin credenciales (tests). Objeto → credenciales explícitas. */
-    credenciales?: Credenciales | null;
-    log?: (linea: string) => void;
-    /** `undefined` → se resuelve de `BOARD_LANGUAGE` (después de cargar el
-     *  `.env`, ver `resolverIdiomaTablero`). Valor → idioma explícito (tests). */
-    idioma?: Idioma;
-}
 
 export interface OpcionesCLI {
     dryRun: boolean;
@@ -526,53 +470,6 @@ export function recortarParaNotion(texto: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// normalizarIdBaseNotion
-// ---------------------------------------------------------------------------
-
-export type ResultadoNormalizacionId = { ok: true; id: string } | { ok: false; error: string };
-
-const REGEX_ID_32_HEX = /^[0-9a-f]{32}$/i;
-const REGEX_UUID_CON_GUIONES = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Un segmento de URL termina en una corrida de 32 hex, sola o precedida por
- *  "-" (el título de la página, ej. "Tablero-de-features-<32hex>"). */
-const REGEX_ID_AL_FINAL_DE_SEGMENTO = /(?:^|-)([0-9a-f]{32})$/i;
-
-const MENSAJE_ID_BASE_INVALIDO =
-    'NOTION_TABLERO_DB_ID no contiene un ID de base de Notion: se espera el ID de 32 caracteres ' +
-    'hexadecimales, o la URL completa de la base de Notion. El "?v=..." al final de una URL de Notion ' +
-    'identifica la VISTA, no la base, y se ignora.';
-
-function extraerIdDeSegmento(segmento: string): string | null {
-    if (REGEX_ID_32_HEX.test(segmento)) return segmento.toLowerCase();
-    if (REGEX_UUID_CON_GUIONES.test(segmento)) return segmento.toLowerCase().replace(/-/g, '');
-    const coincidencia = REGEX_ID_AL_FINAL_DE_SEGMENTO.exec(segmento);
-    return coincidencia ? coincidencia[1].toLowerCase() : null;
-}
-
-/**
- * Acepta el ID de base de Notion en cualquiera de sus formas usuales: el ID
- * "pelado" (32 hex, con o sin guiones tipo UUID) o la URL completa de la
- * base tal como se copia del navegador, con o sin "?v=<id-de-vista>" — el
- * query string (y cualquier hash) se descarta ANTES que cualquier otra
- * cosa, porque pegar la URL con el parámetro de vista es el error real que
- * motivó esta función: produce un 400 críptico de Notion, porque ese "v" es
- * el ID de la VISTA, no el de la base. El resultado se normaliza siempre a
- * 32 hex en minúscula sin guiones: la API de Notion acepta las dos formas,
- * pero un único formato interno simplifica los logs y los tests.
- */
-export function normalizarIdBaseNotion(valor: string): ResultadoNormalizacionId {
-    const sinQueryNiHash = valor.trim().split('?')[0].split('#')[0].trim();
-    if (sinQueryNiHash === '') return { ok: false, error: MENSAJE_ID_BASE_INVALIDO };
-
-    const segmentos = sinQueryNiHash.split('/').filter((s) => s.trim() !== '');
-    const ultimoSegmento = segmentos.length > 0 ? segmentos[segmentos.length - 1] : sinQueryNiHash;
-
-    const id = extraerIdDeSegmento(ultimoSegmento);
-    if (id === null) return { ok: false, error: MENSAJE_ID_BASE_INVALIDO };
-    return { ok: true, id };
-}
-
-// ---------------------------------------------------------------------------
 // construirFila
 // ---------------------------------------------------------------------------
 
@@ -876,10 +773,6 @@ const TAMANO_LOTE_BLOQUES = 100; // límite de la API por request (append-block-
 
 function dormirPorDefecto(ms: number): Promise<void> {
     return new Promise((resolver) => setTimeout(resolver, ms));
-}
-
-function mensajeDeError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
 }
 
 /** Espera de backoff exponencial para el intento fallido dado (1-based): 1s,
