@@ -31,7 +31,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - PR 1a: #8 (refactor/modular-core → main), mergeado en 1e85a6c.
 - PR 1b: #9 (refactor/entity-descriptor → main), mergeado.
 - PR 2: #10 (feat/task-entity → main), mergeado. Fix de CI 0602e74: los tests aíslan GITHUB_REPOSITORY.
-- PR 3: rama feat/task-relation desde main.
+- PR 3: #11 (feat/task-relation → main), mergeado.
+- PR 4: rama feat/contribuyentes desde main.
 
 ## Progreso
 
@@ -47,8 +48,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - T4: ruta delegada (escritor único). 10 commits f163b0d..689ba86; tests 233 → 294 (también con GITHUB_REPOSITORY y BOARD_LANGUAGE=en); cada commit verificado por separado. RED por aserción en cada comportamiento nuevo; los tests que fijan comportamiento existente se validaron rompiendo el código a propósito.
 - Revisión T4: tramos c57527f..54bdfb5, ..d5cfa81, ..9f762e4, conjunto ..9f762e4 y seguimientos ..689ba86, todos aprobados y confirmados. Correcciones derivadas de la revisión: slugs con espacios o puntos internos válidos; Tareas desactivadas (no error) cuando solo la carpeta por defecto coincide con la de Features.
 - Cierre de T4 tras la revisión del conjunto: README alineado con la regla real del slug (fefc0a1); una tarea nunca se vincula a una página huérfana de Features (bf69bcc); sin lista de documentos de Features no se filtran relaciones (e8c6f69). 296 tests; todo aprobado y confirmado.
-- Seguimientos para T5 (no bloqueantes): la comparación de carpetas no contempla mayúsculas/minúsculas, segmentos ".." ni rutas absolutas; el caso de lista de documentos de Features ausente con mapa de páginas presente no tiene test (hoy no es alcanzable).
+- Seguimientos para T5 (no bloqueantes): la comparación de carpetas no contempla mayúsculas/minúsculas, segmentos ".." ni rutas absolutas; el caso de lista de documentos de Features ausente con mapa de páginas presente no tiene test (hoy no es alcanzable); test de a qué página se vincula una tarea cuando Features tiene páginas duplicadas para un slug.
 
 ## Próximo paso
 
-- PR 3 en revisión; luego T5 (Contribuyentes desde git y PRs) en una rama desde main.
+- T5 (Contribuyentes) en feat/contribuyentes; ruta delegada (escritor único). Contribuyentes es una propiedad opcional: si la columna no existe en la base, se informa y no se escribe, para no romper tableros existentes.
