@@ -37,13 +37,18 @@ export interface ConfiguracionEntorno {
 export interface DependenciasSincronizar {
     raizRepo: string;
     /** Documentos de la carpeta de la entidad (`DescriptorEntidad.carpeta`,
-     *  relativa a `raizRepo`). Lanza si la carpeta falta o está vacía. */
-    listarDocumentos: (carpeta: string) => Array<{ slug: string; contenido: string }>;
+     *  relativa a `raizRepo`). Lanza si la carpeta falta o está vacía; con
+     *  `opcional` (Tareas), en esos dos casos devuelve `[]`. */
+    listarDocumentos: (
+        carpeta: string,
+        opciones?: { opcional?: boolean },
+    ) => Array<{ slug: string; contenido: string }>;
     repositorio: RepositorioGit;
     configuracion: ConfiguracionEntorno;
     /** Cliente de Notion autenticado con `token`. */
     crearClienteNotion: (token: string) => ClienteNotion;
-    /** Ajustes por proyecto ya resueltos (carpeta de Features, rama base). */
+    /** Ajustes por proyecto ya resueltos (carpetas de Features y Tareas,
+     *  rama base). */
     ajustes: AjustesProyecto;
     hoy?: Date;
     /** `undefined` → se cargan con `configuracion.cargarCredenciales` (uso
