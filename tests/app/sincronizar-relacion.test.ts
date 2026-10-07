@@ -134,6 +134,20 @@ describe('sincronizar — relación "Feature" de las Tareas', () => {
         expect(paginaTarea('sin-padre')?.properties.Feature).toEqual({ relation: [] });
     });
 
+    test('un padre con espacios en su nombre ("mi feature.md") resuelve la relación a su página', async () => {
+        const { entrada, paginaTarea } = escenario(
+            [{ slug: 'mi feature', contenido: docFeature('Mi feature') }],
+            [{ slug: 'tarea-x', contenido: docTarea('mi feature') }],
+        );
+
+        const resumen = await sincronizar({ dryRun: false }, entrada);
+
+        expect(resumen.codigo).toBe(0);
+        expect(resumen.tareas?.erroresDeFormato).toEqual([]);
+        expect(resumen.paginasPorSlug?.get('mi feature')).toBe('page-1');
+        expect(paginaTarea('tarea-x')?.properties.Feature).toEqual({ relation: [{ id: 'page-1' }] });
+    });
+
     test('la actualización de una tarea existente también escribe la relación', async () => {
         const { tareas, entrada, paginaTarea } = escenario(
             [{ slug: 'padre', contenido: docFeature('Padre') }],

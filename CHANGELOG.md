@@ -41,9 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TABLERO_CARPETA_TAREAS` empty or equal to `TABLERO_CARPETA` (after
   normalization) is now a configuration error, reported before any Notion
   call.
-- The task frontmatter `feature` must be a valid document slug (no
-  whitespace, `/`, `\`, `..` or characters a file name cannot hold);
-  otherwise it is a format error of that task.
+- The task frontmatter `feature` must be a valid document slug: not empty,
+  not `.` or `..`, no leading or trailing whitespace (inner spaces and dots
+  are fine, e.g. `mi feature` or `a..b`), and no `/`, `\`,
+  `< > : " | ? *` or control characters; otherwise it is a format error of
+  that task.
 - Internal refactor: the single sync script is split into `src/core`,
   `src/ports`, `src/adapters`, `src/app` and `src/entrypoints` (entry point:
   `src/entrypoints/cli.ts`), with tests split by layer. No behavior change.
