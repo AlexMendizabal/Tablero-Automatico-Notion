@@ -17,6 +17,30 @@ import * as path from 'node:path';
 
 import dotenv from 'dotenv';
 
+import { type Idioma, type ResultadoIdioma, TEXTOS_POR_IDIOMA, resolverIdiomaTablero } from './core/i18n';
+import { construirValoresPropiedades, traducirPropiedades, validarEsquema } from './core/schema';
+import type {
+    DocumentoODD,
+    DuplicadoSlug,
+    Estado,
+    FilaTablero,
+    PaginaExistente,
+    ParametrosActualizado,
+    ParametrosConstruirFila,
+    PlanSync,
+    PropiedadesNotionBrutas,
+    PullRequestInfo,
+    RamaConFecha,
+    ResultadoParseoDocumento,
+    TareaDocumento,
+} from './core/types';
+
+// Re-exports transitorios: el núcleo se está mudando a `src/core`, y este
+// archivo mantiene su API pública mientras dura la migración.
+export * from './core/i18n';
+export * from './core/schema';
+export * from './core/types';
+
 // ---------------------------------------------------------------------------
 // === Ajustes por proyecto ===
 //
@@ -36,266 +60,9 @@ export const CARPETA_TAREAS = process.env.TABLERO_CARPETA ?? 'odd/tasks';
  *  `TABLERO_RAMA_BASE`. */
 export const RAMA_BASE_DOCUMENTO = process.env.TABLERO_RAMA_BASE ?? 'main';
 
-/** Idioma del tablero de Notion: nombres de las propiedades, valores del
- *  select de estado y textos escritos en las filas. Variable de entorno:
- *  `BOARD_LANGUAGE` (`es` por defecto, o `en`; ver `resolverIdiomaTablero`).
- *  No afecta a los documentos ODD: el parser acepta siempre las palabras
- *  clave en los dos idiomas. */
-export type Idioma = 'es' | 'en';
-
-/**
- * Tipo de Notion de cada propiedad del tablero, por clave interna (neutral,
- * la misma que el campo correspondiente de `FilaTablero`). El orden de esta
- * constante es el orden en que se validan y se escriben las propiedades.
- */
-export const TIPOS_PROPIEDAD = {
-    feature: 'title',
-    slug: 'rich_text',
-    estado: 'select',
-    progreso: 'rich_text',
-    pendiente: 'rich_text',
-    prsAbiertos: 'rich_text',
-    ramas: 'rich_text',
-    diasSinActividad: 'number',
-    actualizado: 'date',
-    documento: 'url',
-    huella: 'rich_text',
-} as const;
-
-export type ClavePropiedad = keyof typeof TIPOS_PROPIEDAD;
-
-const CLAVES_PROPIEDAD = Object.keys(TIPOS_PROPIEDAD) as ClavePropiedad[];
-
-interface TextosIdioma {
-    /** Nombre visible en Notion de cada propiedad. */
-    propiedades: Record<ClavePropiedad, string>;
-    /** Valor visible en Notion de cada estado interno (ver `Estado`). */
-    estados: Record<Estado, string>;
-    /** Texto de la propiedad de progreso, ej. "2/3 tareas". */
-    progreso: (hechas: number, total: number) => string;
-}
-
-/**
- * Lo que el tablero de Notion muestra en cada idioma. Las propiedades
- * (nombre + `TIPOS_PROPIEDAD`) son las que este script espera encontrar,
- * exactas, en la base de Notion (`validarEsquema` las compara contra el
- * esquema real antes de escribir nada). Renombrar o retipar una columna en
- * Notion exige cambiar los dos lados del contrato: este diccionario Y la base
- * de Notion — ninguno de los dos se puede descubrir automáticamente del
- * otro. El `satisfies` obliga a que cada idioma defina todas las claves.
- */
-export const TEXTOS_POR_IDIOMA = {
-    es: {
-        propiedades: {
-            feature: 'Feature',
-            slug: 'Slug',
-            estado: 'Estado',
-            progreso: 'Progreso',
-            pendiente: 'Pendiente',
-            prsAbiertos: 'PRs abiertos',
-            ramas: 'Ramas',
-            diasSinActividad: 'Días sin actividad',
-            actualizado: 'Actualizado',
-            documento: 'Documento',
-            huella: 'Huella',
-        },
-        estados: {
-            Terminada: 'Terminada',
-            'QA pendiente': 'QA pendiente',
-            'Sin empezar': 'Sin empezar',
-            'En curso': 'En curso',
-        },
-        progreso: (hechas: number, total: number) => `${hechas}/${total} tareas`,
-    },
-    en: {
-        propiedades: {
-            feature: 'Feature',
-            slug: 'Slug',
-            estado: 'Status',
-            progreso: 'Progress',
-            pendiente: 'Pending',
-            prsAbiertos: 'Open PRs',
-            ramas: 'Branches',
-            diasSinActividad: 'Days inactive',
-            actualizado: 'Updated',
-            documento: 'Document',
-            huella: 'Fingerprint',
-        },
-        estados: {
-            Terminada: 'Done',
-            'QA pendiente': 'QA pending',
-            'Sin empezar': 'Not started',
-            'En curso': 'In progress',
-        },
-        progreso: (hechas: number, total: number) => `${hechas}/${total} tasks`,
-    },
-} as const satisfies Record<Idioma, TextosIdioma>;
-
-/** Propiedades (nombre visible + tipo) que la base de Notion debe tener en el
- *  idioma dado, en el orden de `TIPOS_PROPIEDAD`. */
-export function esquemaEsperado(idioma: Idioma = 'es'): Array<{ nombre: string; tipo: string }> {
-    return CLAVES_PROPIEDAD.map((clave) => ({
-        nombre: TEXTOS_POR_IDIOMA[idioma].propiedades[clave],
-        tipo: TIPOS_PROPIEDAD[clave],
-    }));
-}
-
-export type ResultadoIdioma = { ok: true; idioma: Idioma } | { ok: false; error: string };
-
-/** Interpreta el valor de `BOARD_LANGUAGE`: ausente o vacío → `es`; se
- *  ignoran espacios y mayúsculas. Cualquier otro valor es un error de
- *  configuración, nunca un idioma por defecto silencioso. */
-export function resolverIdiomaTablero(valor: string | undefined): ResultadoIdioma {
-    const normalizado = (valor ?? '').trim().toLowerCase();
-    if (normalizado === '') return { ok: true, idioma: 'es' };
-    if (normalizado === 'es' || normalizado === 'en') return { ok: true, idioma: normalizado };
-    return {
-        ok: false,
-        error: `BOARD_LANGUAGE tiene un valor inválido: "${valor}". Valores admitidos: "es" (español, por defecto) o "en" (inglés).`,
-    };
-}
-
 // ---------------------------------------------------------------------------
 // Tipos del núcleo puro
 // ---------------------------------------------------------------------------
-
-export interface TareaDocumento {
-    id: string;
-    nombre: string;
-    descripcion: string;
-    hecha: boolean;
-    esQA: boolean;
-}
-
-export interface DocumentoODD {
-    slug: string;
-    ramas: string[];
-    /** Hashes completos de commits hechos directo a la rama base, sin rama
-     *  propia ni PR (frontmatter opcional `commits`). Ancla de actividad para trabajo
-     *  histórico que ninguna rama viva ni PR puede fechar. Vacío si el
-     *  documento no declara la clave. */
-    commits: string[];
-    titulo: string;
-    tareas: TareaDocumento[];
-}
-
-export type ResultadoParseoDocumento =
-    | { ok: true; documento: DocumentoODD }
-    | { ok: false; errores: string[] };
-
-/** Estado interno de una feature. Sus valores coinciden con los nombres en
- *  español por compatibilidad hacia atrás; lo que se escribe en Notion sale
- *  siempre de `TEXTOS_POR_IDIOMA[idioma].estados`. */
-export type Estado = 'Terminada' | 'QA pendiente' | 'Sin empezar' | 'En curso';
-
-export interface RamaConFecha {
-    nombre: string;
-    fecha: string; // ISO
-}
-
-export interface PullRequestInfo {
-    number: number;
-    headRefName: string;
-    state: 'OPEN' | 'CLOSED' | 'MERGED';
-    createdAt: string;
-    mergedAt: string | null;
-    closedAt: string | null;
-    /** Deliberadamente NUNCA se pide a `gh pr list` (ver `obtenerPRs`) ni se lee
-     *  acá: la limpieza de ramas mueve este campo con eventos que no son
-     *  trabajo real (ver `calcularActualizado`). Queda opcional en el tipo
-     *  solo para poder demostrar en los tests que se ignora aunque llegue. */
-    updatedAt?: string;
-}
-
-export interface FilaTablero {
-    feature: string;
-    slug: string;
-    estado: Estado;
-    progreso: string;
-    pendiente: string;
-    prsAbiertos: string;
-    ramas: string;
-    diasSinActividad: number;
-    actualizado: string; // ISO
-    documento: string; // URL
-    huella: string;
-}
-
-type RichTextArray = Array<{ type: 'text'; text: { content: string } }>;
-
-/** Valor de cada propiedad de Notion, por clave interna (sin traducir). */
-export interface ValoresPropiedades {
-    feature: { title: RichTextArray };
-    slug: { rich_text: RichTextArray };
-    estado: { select: { name: string } };
-    progreso: { rich_text: RichTextArray };
-    pendiente: { rich_text: RichTextArray };
-    prsAbiertos: { rich_text: RichTextArray };
-    ramas: { rich_text: RichTextArray };
-    diasSinActividad: { number: number };
-    actualizado: { date: { start: string } };
-    documento: { url: string };
-    huella: { rich_text: RichTextArray };
-}
-
-/** Propiedades tal como viajan a Notion, con los nombres visibles del idioma
- *  dado (ej. `Estado` en español, `Status` en inglés). */
-export type PropiedadesNotion<I extends Idioma = 'es'> = {
-    [K in ClavePropiedad as (typeof TEXTOS_POR_IDIOMA)[I]['propiedades'][K]]: ValoresPropiedades[K];
-};
-
-export interface PropiedadInvalida {
-    nombre: string;
-    motivo: 'faltante' | 'tipo-incorrecto';
-    tipoEsperado: string;
-    tipoActual?: string;
-}
-
-export interface PaginaExistente {
-    pageId: string;
-    slug: string;
-    huella: string;
-    /** `created_time` de Notion (ISO), cuando se conoce. Se usa solo para
-     *  elegir determinísticamente cuál página se actualiza si el mismo Slug
-     *  aparece repetido (ver `resolverDuplicadosPorSlug`); opcional porque
-     *  la mayoría de los tests no necesitan declararlo. */
-    createdTime?: string;
-}
-
-export interface DuplicadoSlug {
-    slug: string;
-    /** IDs de las páginas duplicadas que NO se actualizan. Nunca se borran. */
-    pageIds: string[];
-}
-
-export interface PlanSync {
-    crear: FilaTablero[];
-    actualizar: Array<{ pageId: string; fila: FilaTablero; reescribirCuerpo: boolean }>;
-    huerfanas: PaginaExistente[];
-}
-
-export interface ParametrosActualizado {
-    ramasVivas: RamaConFecha[];
-    prs: PullRequestInfo[];
-    /** Fechas ISO YA resueltas de cada hash en `DocumentoODD.commits` (la
-     *  resolución de hash → fecha es E/S y vive fuera del núcleo puro). */
-    fechasCommits?: string[];
-    fechaDocumento: string | null;
-    hoy: Date;
-}
-
-export interface ParametrosConstruirFila {
-    documento: DocumentoODD;
-    todasLasRamas: RamaConFecha[];
-    todosLosPRs: PullRequestInfo[];
-    /** Fechas ISO ya resueltas de `documento.commits` (ver `ParametrosActualizado`). */
-    fechasCommits?: string[];
-    fechaDocumento: string | null;
-    hoy: Date;
-    ownerRepo: string;
-    /** Idioma de los textos de la fila (ej. "2/3 tareas"). Por defecto `es`. */
-    idioma?: Idioma;
-}
 
 export type EjecutarComando = (comando: string, argumentos: string[]) => string;
 
@@ -310,11 +77,6 @@ export interface Credenciales {
     token: string;
     databaseId: string;
 }
-
-/** Forma laxa de un objeto "properties" de una página de Notion: alcanza para
- *  leer los campos rich_text que este script necesita (Slug, Huella), sin
- *  tipar el esquema completo de la API. */
-export type PropiedadesNotionBrutas = Record<string, unknown>;
 
 export interface ClienteNotion {
     obtenerDataSourceId(databaseId: string): Promise<string>;
@@ -860,78 +622,6 @@ export function construirFila(parametros: ParametrosConstruirFila): FilaTablero 
         documento: `https://github.com/${ownerRepo}/blob/${RAMA_BASE_DOCUMENTO}/${CARPETA_TAREAS}/${documento.slug}.md`,
         huella: calcularHuella(documento.tareas),
     };
-}
-
-// ---------------------------------------------------------------------------
-// construirPropiedadesNotion
-// ---------------------------------------------------------------------------
-
-function textoRico(contenido: string): RichTextArray {
-    return contenido === '' ? [] : [{ type: 'text', text: { content: contenido } }];
-}
-
-/** Valores de las propiedades de una fila, por clave interna. El estado ya
- *  sale con su nombre visible en el idioma dado. */
-export function construirValoresPropiedades(fila: FilaTablero, idioma: Idioma = 'es'): ValoresPropiedades {
-    return {
-        feature: { title: textoRico(fila.feature) },
-        slug: { rich_text: textoRico(fila.slug) },
-        estado: { select: { name: TEXTOS_POR_IDIOMA[idioma].estados[fila.estado] } },
-        progreso: { rich_text: textoRico(fila.progreso) },
-        pendiente: { rich_text: textoRico(fila.pendiente) },
-        prsAbiertos: { rich_text: textoRico(fila.prsAbiertos) },
-        ramas: { rich_text: textoRico(fila.ramas) },
-        diasSinActividad: { number: fila.diasSinActividad },
-        actualizado: { date: { start: fila.actualizado } },
-        documento: { url: fila.documento },
-        huella: { rich_text: textoRico(fila.huella) },
-    };
-}
-
-/** Frontera con Notion: pasa de claves internas a los nombres visibles del
- *  idioma, en el orden de `TIPOS_PROPIEDAD`. Las claves ausentes se omiten
- *  (ej. la huella, que se escribe aparte al final). */
-export function traducirPropiedades(valores: Partial<ValoresPropiedades>, idioma: Idioma): PropiedadesNotionBrutas {
-    const traducidas: PropiedadesNotionBrutas = {};
-    for (const clave of CLAVES_PROPIEDAD) {
-        if (valores[clave] !== undefined) traducidas[TEXTOS_POR_IDIOMA[idioma].propiedades[clave]] = valores[clave];
-    }
-    return traducidas;
-}
-
-export function construirPropiedadesNotion<I extends Idioma = 'es'>(fila: FilaTablero, idioma?: I): PropiedadesNotion<I> {
-    const efectivo: Idioma = idioma ?? 'es';
-    return traducirPropiedades(construirValoresPropiedades(fila, efectivo), efectivo) as PropiedadesNotion<I>;
-}
-
-// ---------------------------------------------------------------------------
-// validarEsquema
-// ---------------------------------------------------------------------------
-
-// Los nombres y tipos esperados ("TIPOS_PROPIEDAD", "TEXTOS_POR_IDIOMA")
-// viven en el bloque "=== Ajustes por proyecto ===", cerca del principio del
-// archivo, junto a los otros valores que hay que tocar para adaptar este
-// script a otro repositorio.
-
-export function validarEsquema(
-    propiedadesDeLaBase: Record<string, { type: string }>,
-    idioma: Idioma = 'es',
-): PropiedadInvalida[] {
-    const problemas: PropiedadInvalida[] = [];
-    for (const esperada of esquemaEsperado(idioma)) {
-        const actual = propiedadesDeLaBase[esperada.nombre];
-        if (!actual) {
-            problemas.push({ nombre: esperada.nombre, motivo: 'faltante', tipoEsperado: esperada.tipo });
-        } else if (actual.type !== esperada.tipo) {
-            problemas.push({
-                nombre: esperada.nombre,
-                motivo: 'tipo-incorrecto',
-                tipoEsperado: esperada.tipo,
-                tipoActual: actual.type,
-            });
-        }
-    }
-    return problemas;
 }
 
 // ---------------------------------------------------------------------------
