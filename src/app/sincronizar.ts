@@ -10,7 +10,7 @@ import type { DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
 import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
 import type { DocumentoODD, DuplicadoSlug } from '../core/types';
-import { cargarCredenciales, leerBoardLanguage } from '../adapters/config';
+import { AJUSTES_PROYECTO, cargarCredenciales, leerBoardLanguage } from '../adapters/config';
 import { obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
 import {
     obtenerEsRepoSuperficial,
@@ -169,7 +169,11 @@ export async function sincronizar(
     opciones: OpcionesCLI,
     dependencias: DependenciasSincronizar,
 ): Promise<ResumenSincronizacion> {
-    return sincronizarEntidad(crearDescriptorFeature(), opciones, dependencias);
+    return sincronizarEntidad(
+        crearDescriptorFeature(dependencias.ajustes ?? AJUSTES_PROYECTO),
+        opciones,
+        dependencias,
+    );
 }
 
 /**
@@ -197,7 +201,7 @@ export async function sincronizarEntidad<
     // código 0, todo huérfano"). "listarDocumentos" ahora lanza en ese caso.
     let documentosLeidos: Array<{ slug: string; contenido: string }>;
     try {
-        documentosLeidos = dependencias.listarDocumentos();
+        documentosLeidos = dependencias.listarDocumentos(descriptor.carpeta);
     } catch (error) {
         return resumenDeErrorEntorno(log, entidad, mensajeDeError(error));
     }

@@ -2,6 +2,7 @@
  * Puertos de la orquestación: el comando (git/gh) inyectable y las
  * dependencias de `sincronizar`.
  */
+import type { AjustesProyecto } from '../core/ajustes';
 import type { Idioma } from '../core/i18n';
 import type { Credenciales, Dormir, FetchInyectado } from './notion';
 
@@ -11,7 +12,9 @@ export interface DependenciasSincronizar {
     raizRepo: string;
     ejecutar: EjecutarComando;
     fetchInyectado: FetchInyectado;
-    listarDocumentos: () => Array<{ slug: string; contenido: string }>;
+    /** Documentos de la carpeta de la entidad (`DescriptorEntidad.carpeta`,
+     *  relativa a `raizRepo`). Lanza si la carpeta falta o está vacía. */
+    listarDocumentos: (carpeta: string) => Array<{ slug: string; contenido: string }>;
     dormir?: Dormir;
     hoy?: Date;
     /** `undefined` → se cargan desde el entorno (uso real, `principal()`).
@@ -21,4 +24,7 @@ export interface DependenciasSincronizar {
     /** `undefined` → se resuelve de `BOARD_LANGUAGE` (después de cargar el
      *  `.env`, ver `resolverIdiomaTablero`). Valor → idioma explícito (tests). */
     idioma?: Idioma;
+    /** `undefined` → los de `TABLERO_CARPETA`/`TABLERO_RAMA_BASE`, leídos al
+     *  cargar `adapters/config.ts` (uso real). Valor → ajustes explícitos. */
+    ajustes?: AjustesProyecto;
 }

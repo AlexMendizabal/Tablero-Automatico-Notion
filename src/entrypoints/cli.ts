@@ -67,7 +67,7 @@ function principal(argumentos: string[]): void {
             raizRepo,
             ejecutar,
             fetchInyectado,
-            listarDocumentos: () => listarDocumentosODD(raizRepo),
+            listarDocumentos: (carpeta) => listarDocumentosODD(raizRepo, carpeta),
             log: (linea) => console.log(linea),
         },
     )

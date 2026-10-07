@@ -7,7 +7,7 @@
  * valores de sus propiedades, y el descriptor que los reúne
  * (`crearDescriptorFeature`) para la orquestación genérica.
  */
-import { type AjustesProyecto, CARPETA_TAREAS, RAMA_BASE_DOCUMENTO } from '../ajustes';
+import { AJUSTES_POR_DEFECTO, type AjustesProyecto } from '../ajustes';
 import type { Idioma } from '../i18n';
 import { parsearDocumento } from '../parse';
 import { calcularHuella } from '../plan';
@@ -172,16 +172,12 @@ export function construirPropiedadesNotion<I extends Idioma = 'es'>(fila: FilaTa
 // Fila
 // ---------------------------------------------------------------------------
 
-/** Ajustes que se usan cuando no se pasan otros explícitos (tests y llamadas
- *  sueltas). La orquestación siempre usa los del descriptor. */
-const AJUSTES_DE_MODULO: AjustesProyecto = {
-    carpetaFeatures: CARPETA_TAREAS,
-    ramaBaseDocumento: RAMA_BASE_DOCUMENTO,
-};
-
+/** `ajustes` por defecto: los valores por defecto del proyecto (sin leer el
+ *  entorno). La orquestación siempre pasa los del descriptor, que resolvió
+ *  quien lo compuso (ver `adapters/config.ts`). */
 export function construirFila(
     parametros: ParametrosConstruirFila,
-    ajustes: AjustesProyecto = AJUSTES_DE_MODULO,
+    ajustes: AjustesProyecto = AJUSTES_POR_DEFECTO,
 ): FilaTablero {
     const { documento, todasLasRamas, todosLosPRs, fechasCommits, fechaDocumento, hoy, ownerRepo } = parametros;
     const idioma = parametros.idioma ?? 'es';
@@ -249,7 +245,7 @@ export type DescriptorFeature = DescriptorEntidad<ClavePropiedad, Estado, Docume
 
 /** Descriptor de Feature con los ajustes del proyecto (carpeta de documentos
  *  y rama base del enlace "Documento") ya resueltos por quien lo compone. */
-export function crearDescriptorFeature(ajustes: AjustesProyecto = AJUSTES_DE_MODULO): DescriptorFeature {
+export function crearDescriptorFeature(ajustes: AjustesProyecto = AJUSTES_POR_DEFECTO): DescriptorFeature {
     return {
         ...ESQUEMA_FEATURE,
         clave: 'feature',
