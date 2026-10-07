@@ -298,12 +298,14 @@ export async function sincronizar(
     const featuresIncompleta = credenciales !== null && !sinBaseTareas && !features.paginasPorSlug;
     // Solo páginas con documento de Features en el repo (válido o no): una
     // página huérfana (su documento se borró) nunca se enlaza, así la
-    // relación coincide con el aviso de "no existe".
+    // relación coincide con el aviso de "no existe". Sin la lista de
+    // documentos no se filtra: vaciar todas las relaciones con información
+    // incompleta sería peor que enlazar una huérfana.
     const relacion: RelacionFeatures | undefined =
         features.paginasPorSlug && !sinBaseTareas
             ? {
                   paginas: new Map(
-                      [...features.paginasPorSlug].filter(([slug]) => slugsFeatures?.has(slug) ?? false),
+                      [...features.paginasPorSlug].filter(([slug]) => slugsFeatures?.has(slug) ?? true),
                   ),
                   porCrear: new Set(features.slugsPorCrear ?? []),
               }
