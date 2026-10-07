@@ -134,6 +134,33 @@ describe('sincronizar — relación "Feature" de las Tareas', () => {
         expect(paginaTarea('sin-padre')?.properties.Feature).toEqual({ relation: [] });
     });
 
+    test('con dos páginas de Features para el mismo slug, la tarea se enlaza a la que actualiza Features (la más antigua)', async () => {
+        const { features, entrada, paginaTarea } = escenario(
+            [{ slug: 'padre', contenido: docFeature('Padre') }],
+            [{ slug: 'tarea-x', contenido: docTarea('padre') }],
+        );
+        // La más nueva primero, para que el orden de la consulta no decida.
+        features.paginas.set('page-nueva', {
+            id: 'page-nueva',
+            properties: propiedadesMinimas('padre', 'x'),
+            hijos: [],
+            createdTime: '2026-02-01T00:00:00.000Z',
+        });
+        features.paginas.set('page-vieja', {
+            id: 'page-vieja',
+            properties: propiedadesMinimas('padre', 'x'),
+            hijos: [],
+            createdTime: '2026-01-01T00:00:00.000Z',
+        });
+
+        const resumen = await sincronizar({ dryRun: false }, entrada);
+
+        expect(resumen.duplicadas).toEqual([{ slug: 'padre', pageIds: ['page-nueva'] }]);
+        const actualizadas = features.solicitudes.filter((s) => s.metodo === 'PATCH' && s.ruta.startsWith('/pages/'));
+        expect(new Set(actualizadas.map((s) => s.ruta))).toEqual(new Set(['/pages/page-vieja']));
+        expect(paginaTarea('tarea-x')?.properties.Feature).toEqual({ relation: [{ id: 'page-vieja' }] });
+    });
+
     test('un padre con espacios en su nombre ("mi feature.md") resuelve la relación a su página', async () => {
         const { entrada, paginaTarea } = escenario(
             [{ slug: 'mi feature', contenido: docFeature('Mi feature') }],
