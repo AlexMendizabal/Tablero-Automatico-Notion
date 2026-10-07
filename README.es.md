@@ -168,7 +168,9 @@ Variables opcionales, con su valor por defecto entre paréntesis:
   [Tareas avanzadas](#tareas-avanzadas-opcional)). Sin definir, las tareas no
   se escriben en Notion.
 - `TABLERO_CARPETA_TAREAS` (`odd/tareas`): carpeta donde viven los documentos
-  de tareas, relativa a la raíz del repositorio.
+  de tareas, relativa a la raíz del repositorio. No puede quedar vacía ni ser
+  la misma carpeta que `TABLERO_CARPETA`: en esos casos la corrida termina con
+  un error de configuración antes de llamar a Notion.
 
 ## Uso
 
@@ -317,14 +319,27 @@ feature padre. Se sincronizan después de las features, en una base propia.
    - [ ] **T1 — Nombre corto**: descripción.
    ```
 
-   Si `feature` nombra un slug que no tiene documento en `TABLERO_CARPETA`,
-   la corrida imprime un aviso ("Avisos") en el resumen de tareas; no es un
-   error de formato ni cambia el código de salida. Ejemplo:
+   `feature` tiene que ser un slug de documento válido (el nombre del archivo
+   sin `.md`: sin espacios, `/`, `\`, `..` ni `< > : " | ? *`); si no lo es,
+   es un error de formato de esa tarea. Si `feature` nombra un slug que no
+   tiene documento en `TABLERO_CARPETA`, la corrida imprime un aviso
+   ("Avisos") en el resumen de tareas; no es un error de formato ni cambia el
+   código de salida. Ejemplo:
    [`odd/tareas/ejemplo-tarea.md`](odd/tareas/ejemplo-tarea.md).
 2. **Base de Notion**: crear una segunda base con **las mismas columnas que
    el tablero** (ver [Crear la base en Notion](#crear-la-base-en-notion)),
    salvo la columna de título, que se llama **`Tarea`** (`es`) o **`Task`**
-   (`en`) en vez de `Feature`. Compartirla con la misma integración.
+   (`en`) en vez de `Feature`, más dos columnas propias:
+
+   | Nombre (`es`) | Nombre (`en`) | Tipo en Notion | Contenido |
+   |---|---|---|---|
+   | Feature | Feature | Relation (con la base de Features) | Página de la feature padre; vacía si la tarea no tiene padre |
+   | Responsable | Assignee | Person | Se asigna a mano en Notion; el sync **nunca** la escribe ni la sobrescribe |
+
+   Compartirla con la misma integración. El sync valida las dos columnas: que
+   existan con su tipo y que la relación `Feature` apunte a la base de
+   Features (`NOTION_TABLERO_DB_ID`); una relación con otra base es un error
+   de esquema.
 3. **Configuración**: definir `NOTION_TAREAS_DB_ID` con su ID o su URL (las
    mismas reglas que `NOTION_TABLERO_DB_ID`). Usa el mismo `NOTION_TOKEN`.
 
@@ -333,10 +348,22 @@ Comportamiento:
 - Sin carpeta de tareas, o sin ningún `.md` adentro: las tareas no hacen nada
   y la salida es la de siempre.
 - Con documentos de tareas pero sin `NOTION_TAREAS_DB_ID`: las features se
-  sincronizan como siempre y las tareas se saltean con una línea informativa
-  (el código de salida no cambia).
+  sincronizan como siempre y las tareas no se escriben en Notion (con una
+  línea informativa), pero sus documentos se validan igual: un error de
+  formato vuelve el código de salida distinto de cero y los avisos de feature
+  padre se imprimen.
+- Relación `Feature`: cada tarea apunta a la página de su feature padre en la
+  base de Features (la que ya existía o la que se acaba de crear). Si el padre
+  no tiene página (por ejemplo, porque su documento tiene un error de
+  formato), la relación queda vacía y se imprime un aviso.
+- Si la sincronización de Features no terminó (error de entorno, de
+  configuración o de esquema), las tareas no se escriben en Notion, con una
+  línea informativa, para no dejar relaciones vacías por falta de datos; el
+  código de salida refleja el error de Features.
 - `--dry-run` sin credenciales: después de las filas de features, un segundo
   bloque `Tareas:` lista las filas de tareas, con el slug de la feature padre.
+- `--dry-run` con credenciales: el plan de tareas muestra, por tarea, a qué
+  página de Features apuntaría su relación.
 - Cualquier error en cualquiera de las dos entidades (formato, esquema, ID
   inválido) vuelve el código de salida distinto de cero.
 
