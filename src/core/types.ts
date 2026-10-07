@@ -2,6 +2,7 @@
  * Tipos compartidos del núcleo puro.
  */
 import type { ClavePropiedad, TEXTOS_POR_IDIOMA } from './entities/feature';
+import type { AutorCommit } from './contribuyentes';
 import type { Idioma } from './i18n';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +72,9 @@ export interface FilaTablero {
     actualizado: string; // ISO
     documento: string; // URL
     huella: string;
+    /** Contribuyentes (logins de GitHub o nombres), ya normalizados y
+     *  ordenados (ver `calcularContribuyentes`). */
+    contribuyentes: string[];
 }
 
 export type RichTextArray = Array<{ type: 'text'; text: { content: string } }>;
@@ -157,6 +161,9 @@ export interface ParametrosConstruirFila {
     todosLosPRs: PullRequestInfo[];
     /** Fechas ISO ya resueltas de `documento.commits` (ver `ParametrosActualizado`). */
     fechasCommits?: string[];
+    /** Autores de los commits del documento (los de sus ramas que no están
+     *  en la rama base y los de sus anclas de `commits`), ya leídos de git. */
+    autoresCommits?: AutorCommit[];
     fechaDocumento: string | null;
     hoy: Date;
     ownerRepo: string;

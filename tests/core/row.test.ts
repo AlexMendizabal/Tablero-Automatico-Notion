@@ -134,6 +134,49 @@ describe('construirFila', () => {
     });
 });
 
+describe('construirFila — contribuyentes', () => {
+    const pr = (number: number, headRefName: string, autor?: string) => ({
+        number,
+        headRefName,
+        state: 'MERGED' as const,
+        createdAt: '2026-08-01T00:00:00Z',
+        mergedAt: '2026-08-02T00:00:00Z',
+        closedAt: '2026-08-02T00:00:00Z',
+        ...(autor ? { autor } : {}),
+    });
+
+    test('une los autores de sus commits con los autores de SUS PRs (solo los que matchean sus ramas)', () => {
+        const documento: DocumentoODD = { slug: 'x', ramas: ['feat/x*'], commits: [], titulo: 'X', tareas: [tarea()] };
+        const fila = construirFila({
+            documento,
+            todasLasRamas: [],
+            todosLosPRs: [pr(1, 'feat/x-1', 'octocat'), pr(2, 'feat/otra', 'intrusa'), pr(3, 'feat/x-2')],
+            autoresCommits: [
+                { nombre: 'Zoe', email: 'zoe@x.com', coautores: [{ nombre: 'Bruno', email: 'b@x.com' }] },
+                { nombre: 'Octo', email: '1+OctoCat@users.noreply.github.com', coautores: [] },
+            ],
+            fechaDocumento: null,
+            hoy: new Date('2026-09-21T00:00:00Z'),
+            ownerRepo: 'o/r',
+        });
+
+        expect(fila.contribuyentes).toEqual(['Bruno', 'octocat', 'Zoe']);
+    });
+
+    test('sin autores ni PRs, ninguno', () => {
+        const documento: DocumentoODD = { slug: 'x', ramas: ['feat/x'], commits: [], titulo: 'X', tareas: [tarea()] };
+        const fila = construirFila({
+            documento,
+            todasLasRamas: [],
+            todosLosPRs: [],
+            fechaDocumento: null,
+            hoy: new Date('2026-09-21T00:00:00Z'),
+            ownerRepo: 'o/r',
+        });
+        expect(fila.contribuyentes).toEqual([]);
+    });
+});
+
 // ---------------------------------------------------------------------------
 // formatearFilaLegible ("--dry-run" sin credenciales)
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@
  * (`sincronizarEntidad`) y las funciones genéricas de `core/schema.ts` solo
  * hablan con este contrato, nunca con una entidad concreta.
  */
+import type { AutorCommit } from '../contribuyentes';
 import type { Idioma } from '../i18n';
 import type { DocumentoODD, PullRequestInfo, RamaConFecha, TareaDocumento } from '../types';
 
@@ -74,6 +75,9 @@ export interface ParametrosFilaEntidad<D extends DocumentoODD = DocumentoODD> {
     todosLosPRs: PullRequestInfo[];
     /** Fechas ISO ya resueltas de `documento.commits`. */
     fechasCommits?: string[];
+    /** Autores de los commits del documento (ramas fuera de la base y
+     *  anclas), ya leídos de git: fuente de sus contribuyentes. */
+    autoresCommits?: AutorCommit[];
     fechaDocumento: string | null;
     hoy: Date;
     ownerRepo: string;

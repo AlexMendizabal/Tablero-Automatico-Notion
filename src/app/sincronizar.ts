@@ -3,6 +3,7 @@
  * y escribe (o solo informa, con "--dry-run").
  */
 import { validarAjustesProyecto } from '../core/ajustes';
+import type { AutorCommit } from '../core/contribuyentes';
 import { mensajeDeError } from '../core/errores';
 import { type ResultadoIdioma, resolverIdiomaTablero } from '../core/i18n';
 import { normalizarIdBaseNotion } from '../core/id-notion';
@@ -11,7 +12,8 @@ import { crearDescriptorTarea, type RelacionFeatures } from '../core/entities/ta
 import type { AvisoDocumento, DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
 import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
-import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida } from '../core/types';
+import { coincideRama } from '../core/status';
+import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida, RamaConFecha } from '../core/types';
 import type { DependenciasSincronizar } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
@@ -350,6 +352,51 @@ export async function sincronizar(
     return conTareas(tareas);
 }
 
+/**
+ * Lector de los autores de commits de un documento (fuente de sus
+ * contribuyentes): los de cada rama viva que matchea sus `ramas` (local u
+ * `origin/`) que no están en la rama base, y los de sus anclas de
+ * `commits`. La rama base (`origin/<base>` o, si no existe, la local) se
+ * resuelve una sola vez y solo si algún documento tiene ramas vivas; si no
+ * existe, los commits de ramas se saltean con un único aviso (no es un
+ * error). Cada rama se consulta una sola vez por entidad.
+ */
+function crearLectorAutores(
+    dependencias: DependenciasSincronizar,
+    todasLasRamas: RamaConFecha[],
+    log: (linea: string) => void,
+): (documento: DocumentoODD) => AutorCommit[] {
+    const { repositorio } = dependencias;
+    const ramaBase = dependencias.ajustes.ramaBaseDocumento;
+    let refBase: string | null | undefined;
+    const porRama = new Map<string, AutorCommit[]>();
+    const autoresDeRama = (base: string, rama: string): AutorCommit[] => {
+        let autores = porRama.get(rama);
+        if (autores === undefined) {
+            autores = repositorio.autoresDeRango(base, rama);
+            porRama.set(rama, autores);
+        }
+        return autores;
+    };
+    return (documento) => {
+        const ramas = todasLasRamas.filter((r) => documento.ramas.some((patron) => coincideRama(patron, r.nombre)));
+        const deRamas: AutorCommit[] = [];
+        if (ramas.length > 0) {
+            if (refBase === undefined) {
+                refBase = repositorio.refRamaBase(ramaBase);
+                if (refBase === null) {
+                    log(
+                        `Aviso: no existe la rama base "${ramaBase}" (ni "origin/${ramaBase}"): los contribuyentes no incluyen los commits de las ramas.`,
+                    );
+                }
+            }
+            const base = refBase;
+            if (base !== null) for (const rama of ramas) deRamas.push(...autoresDeRama(base, rama.nombre));
+        }
+        return [...deRamas, ...documento.commits.flatMap((sha) => repositorio.autoresDeCommit(sha))];
+    };
+}
+
 /** Lo que `sincronizar` le pasa a una entidad además de sus dependencias. */
 export interface ContextoEntidad<C extends string = string> {
     /** Data source al que debe apuntar cada propiedad `relation`, por clave
@@ -556,6 +603,7 @@ export async function sincronizarEntidad<
     const todasLasRamas = dependencias.repositorio.ramasConFecha();
     const todosLosPRs = dependencias.repositorio.prs();
     const ownerRepo = dependencias.repositorio.ownerRepo();
+    const autoresDeDocumento = crearLectorAutores(dependencias, todasLasRamas, log);
 
     const filas = documentosValidos.map((documento) =>
         descriptor.construirFila({
@@ -563,6 +611,7 @@ export async function sincronizarEntidad<
             todasLasRamas,
             todosLosPRs,
             fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
+            autoresCommits: autoresDeDocumento(documento),
             fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
             hoy,
             ownerRepo,

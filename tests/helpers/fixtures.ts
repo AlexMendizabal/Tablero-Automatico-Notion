@@ -37,6 +37,7 @@ export function filaBase(overrides: Partial<FilaTablero> = {}): FilaTablero {
         actualizado: '2026-09-01T00:00:00.000Z',
         documento: 'https://github.com/owner/repo/blob/master/odd/tasks/feature-x.md',
         huella: 'abc123',
+        contribuyentes: [],
         ...overrides,
     };
 }

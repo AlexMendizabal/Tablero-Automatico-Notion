@@ -8,6 +8,7 @@
  * (`crearDescriptorFeature`) para la orquestación genérica.
  */
 import { AJUSTES_POR_DEFECTO, type AjustesProyecto } from '../ajustes';
+import { calcularContribuyentes } from '../contribuyentes';
 import type { Idioma } from '../i18n';
 import { parsearDocumento } from '../parse';
 import { calcularHuella } from '../plan';
@@ -235,6 +236,12 @@ export function construirFilaEnCarpeta(
         actualizado,
         documento: `https://github.com/${ownerRepo}/blob/${ramaBaseDocumento}/${carpeta}/${documento.slug}.md`,
         huella: calcularHuella(documento.tareas),
+        contribuyentes: calcularContribuyentes({
+            loginsPrs: [...prsQueMatchean]
+                .sort((a, b) => a.number - b.number)
+                .flatMap((pr) => (pr.autor ? [pr.autor] : [])),
+            commits: parametros.autoresCommits ?? [],
+        }),
     };
 }
 
