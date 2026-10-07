@@ -166,6 +166,7 @@ export const ESQUEMA_CORRECTO_NOTION: Record<string, { type: string }> = {
     'Días sin actividad': { type: 'number' },
     Actualizado: { type: 'date' },
     Documento: { type: 'url' },
+    Contribuyentes: { type: 'multi_select' },
     Huella: { type: 'rich_text' },
 };
 
@@ -359,6 +360,7 @@ export const ESQUEMA_CORRECTO_NOTION_EN: Record<string, { type: string }> = {
     'Days inactive': { type: 'number' },
     Updated: { type: 'date' },
     Document: { type: 'url' },
+    Contributors: { type: 'multi_select' },
     Fingerprint: { type: 'rich_text' },
 };
 

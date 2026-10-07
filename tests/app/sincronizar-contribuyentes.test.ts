@@ -10,8 +10,21 @@ import type { AjustesProyecto } from '../../src/core/ajustes';
 import { crearDescriptorFeature, type DescriptorFeature } from '../../src/core/entities/feature';
 import type { FilaTablero } from '../../src/core/types';
 import type { EjecutarComando } from '../../src/ports/sincronizar';
-import { autorCommit, crearEjecutarFalso, docBase } from '../helpers/fixtures';
-import { sincronizarEntidad } from '../helpers/sincronizar-compuesto';
+import type { PropiedadEsquemaNotion } from '../../src/core/types';
+import {
+    autorCommit,
+    combinarNotionFalsos,
+    crearEjecutarFalso,
+    crearNotionFalsoCompleto,
+    crearNotionFalsoTareas,
+    docBase,
+    ESQUEMA_CORRECTO_NOTION,
+    ESQUEMA_CORRECTO_NOTION_EN,
+    ESQUEMA_CORRECTO_NOTION_TAREAS,
+    ESQUEMA_CORRECTO_NOTION_TAREAS_EN,
+    propiedadesMinimas,
+} from '../helpers/fixtures';
+import { sincronizar, sincronizarEntidad } from '../helpers/sincronizar-compuesto';
 
 import '../helpers/aislar-board-language';
 
@@ -144,5 +157,116 @@ describe('sincronizarEntidad — contribuyentes por documento', () => {
         expect(filas[0].contribuyentes).toEqual([]);
         expect(llamadas.some((args) => args[0] === 'rev-parse' && args[1] === '--verify')).toBe(false);
         expect(lineas.some((l) => l.startsWith('Aviso: no existe la rama base'))).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Propiedad opcional "Contribuyentes" en Notion
+// ---------------------------------------------------------------------------
+
+/** El esquema sin la columna `nombre`. */
+function sin(esquema: Record<string, PropiedadEsquemaNotion>, nombre: string): Record<string, PropiedadEsquemaNotion> {
+    const { [nombre]: _quitada, ...resto } = esquema;
+    return resto;
+}
+
+const IDIOMAS = {
+    es: { columna: 'Contribuyentes', features: ESQUEMA_CORRECTO_NOTION, tareas: ESQUEMA_CORRECTO_NOTION_TAREAS },
+    en: { columna: 'Contributors', features: ESQUEMA_CORRECTO_NOTION_EN, tareas: ESQUEMA_CORRECTO_NOTION_TAREAS_EN },
+} as const;
+
+function escenarioNotion(
+    idioma: 'es' | 'en',
+    esquemas: { features?: Record<string, PropiedadEsquemaNotion>; tareas?: Record<string, PropiedadEsquemaNotion> } = {},
+) {
+    const features = crearNotionFalsoCompleto(esquemas.features ?? IDIOMAS[idioma].features);
+    const tareas = crearNotionFalsoTareas(esquemas.tareas ?? IDIOMAS[idioma].tareas);
+    const { fetchFalso } = combinarNotionFalsos(features, tareas);
+    const lineas: string[] = [];
+    const entrada = {
+        raizRepo: '/repo',
+        ejecutar: crearEjecutarFalso({ ramas: RAMAS, prs: PRS, autoresPorRama: AUTORES_POR_RAMA }),
+        fetchInyectado: fetchFalso,
+        listarDocumentos: () => [{ slug: 'padre', contenido: doc('["feat/x-1"]') }],
+        listarDocumentosTareas: () => [{ slug: 'tarea-x', contenido: doc('["feat/nada"]') }],
+        credenciales: { token: 'tok', databaseId: features.databaseId, databaseIdTareas: tareas.databaseId },
+        hoy: HOY,
+        idioma,
+        log: (l: string) => lineas.push(l),
+    };
+    return { features, tareas, entrada, lineas };
+}
+
+describe('sincronizar — "Contribuyentes" en Notion', () => {
+    test.each(['es', 'en'] as const)('con la columna, se escribe al crear y en cada actualización (idioma: %s)', async (idioma) => {
+        const { columna } = IDIOMAS[idioma];
+        const { features, tareas, entrada, lineas } = escenarioNotion(idioma);
+
+        const primera = await sincronizar({ dryRun: false }, entrada);
+        const altas = features.solicitudes.filter((s) => s.metodo === 'POST' && s.ruta === '/pages');
+        // Alguien edita la columna a mano; la corrida siguiente la vuelve a escribir.
+        const pagina = [...features.paginas.values()][0];
+        pagina.properties[columna] = { multi_select: [{ name: 'otro' }] };
+        const segunda = await sincronizar({ dryRun: false }, entrada);
+
+        expect(primera.codigo).toBe(0);
+        expect(segunda.codigo).toBe(0);
+        expect(segunda.actualizadas).toBe(1);
+        expect(JSON.parse(altas[0].cuerpo).properties[columna]).toEqual({
+            multi_select: [{ name: 'Ana' }, { name: 'Bruno' }, { name: 'octocat' }],
+        });
+        expect(pagina.properties[columna]).toEqual({ multi_select: [{ name: 'Ana' }, { name: 'Bruno' }, { name: 'octocat' }] });
+        // La tarea no tiene contribuyentes: lista vacía, no ausente.
+        expect([...tareas.paginas.values()][0].properties[columna]).toEqual({ multi_select: [] });
+        expect(lineas.some((l) => l.includes('no tiene la columna'))).toBe(false);
+    });
+
+    test.each(['es', 'en'] as const)(
+        'sin la columna en ninguna base: UNA línea informativa por entidad, nunca se escribe y el código no cambia (idioma: %s)',
+        async (idioma) => {
+            const { columna, features: esquemaFeatures, tareas: esquemaTareas } = IDIOMAS[idioma];
+            const { features, tareas, entrada, lineas } = escenarioNotion(idioma, {
+                features: sin(esquemaFeatures, columna),
+                tareas: sin(esquemaTareas, columna),
+            });
+            features.paginas.set('page-vieja', { id: 'page-vieja', properties: propiedadesMinimas('padre', 'x'), hijos: [] });
+
+            const resumen = await sincronizar({ dryRun: false }, entrada);
+
+            expect(resumen.codigo).toBe(0);
+            expect(resumen.actualizadas).toBe(1);
+            expect(resumen.tareas?.creadas).toBe(1);
+            expect(lineas.filter((l) => l.includes('no tiene la columna'))).toEqual([
+                `La base de Features no tiene la columna "${columna}": se omite.`,
+                `La base de Tareas no tiene la columna "${columna}": se omite.`,
+            ]);
+            for (const solicitud of [...features.solicitudes, ...tareas.solicitudes]) {
+                expect(solicitud.cuerpo).not.toContain(columna);
+                expect(solicitud.cuerpo).not.toContain('multi_select');
+            }
+        },
+    );
+
+    test('también en "--dry-run" con credenciales se informa la columna ausente', async () => {
+        const { entrada, lineas } = escenarioNotion('es', { features: sin(ESQUEMA_CORRECTO_NOTION, 'Contribuyentes') });
+
+        const resumen = await sincronizar({ dryRun: true }, entrada);
+
+        expect(resumen.codigo).toBe(0);
+        expect(lineas.filter((l) => l.includes('no tiene la columna'))).toEqual([
+            'La base de Features no tiene la columna "Contribuyentes": se omite.',
+        ]);
+    });
+
+    test('una columna con el tipo incorrecto es un error de esquema (código 1, no se escribe nada)', async () => {
+        const { features, entrada, lineas } = escenarioNotion('es', {
+            features: { ...ESQUEMA_CORRECTO_NOTION, Contribuyentes: { type: 'rich_text' } },
+        });
+
+        const resumen = await sincronizar({ dryRun: false }, entrada);
+
+        expect(resumen.codigo).toBe(1);
+        expect(features.llamadas.crearPagina).toBe(0);
+        expect(lineas).toContain('La propiedad "Contribuyentes" es de tipo "rich_text", debería ser "multi_select".');
     });
 });

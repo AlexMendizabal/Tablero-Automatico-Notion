@@ -11,7 +11,12 @@ import { crearDescriptorFeature } from '../core/entities/feature';
 import { crearDescriptorTarea, type RelacionFeatures } from '../core/entities/tarea';
 import type { AvisoDocumento, DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
-import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
+import {
+    extraerPaginaExistente,
+    propiedadesOpcionalesAusentes,
+    traducirPropiedadesEntidad,
+    validarEsquemaEntidad,
+} from '../core/schema';
 import { coincideRama } from '../core/status';
 import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida, RamaConFecha } from '../core/types';
 import type { DependenciasSincronizar } from '../ports/sincronizar';
@@ -675,6 +680,17 @@ export async function sincronizarEntidad<
         return cerrar(resumen);
     }
 
+    // Propiedades opcionales que la base no tiene (ej. "Contribuyentes" en un
+    // tablero creado antes de que existiera): una línea informativa cada una
+    // y nunca se escriben; no cambian el código de salida.
+    const omitidas = propiedadesOpcionalesAusentes(descriptor, esquemaActual, idioma);
+    for (const clave of omitidas) {
+        const columna = descriptor.textos[idioma].propiedades[clave];
+        log(`La base de ${descriptor.nombreBase} no tiene la columna "${columna}": se omite.`);
+    }
+    const traducir = (valores: Partial<Record<C, unknown>>) =>
+        traducirPropiedadesEntidad(descriptor, valores, idioma, omitidas);
+
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
     const paginasExistentesCrudas = paginasNotion.map((pagina) =>
         extraerPaginaExistente(descriptor, pagina, idioma),
@@ -730,10 +746,10 @@ export async function sincronizarEntidad<
         );
         const pageId = await cliente.crearPagina(
             dataSourceId,
-            traducirPropiedadesEntidad(descriptor, resto, idioma),
+            traducir(resto),
             documento.tareas,
         );
-        await cliente.actualizarPropiedades(pageId, traducirPropiedadesEntidad(descriptor, huella, idioma));
+        await cliente.actualizarPropiedades(pageId, traducir(huella));
         paginasPorSlug.set(fila.slug, pageId);
     }
 
@@ -744,15 +760,15 @@ export async function sincronizarEntidad<
             // Sin reescritura de cuerpo no hay ventana de inconsistencia:
             // todas las propiedades (Huella incluida, que no cambió) se
             // mandan juntas, como antes.
-            await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, valores, idioma));
+            await cliente.actualizarPropiedades(item.pageId, traducir(valores));
             continue;
         }
         const documento = documentosValidos.find((d) => d.slug === item.fila.slug);
         if (!documento) continue;
         const { huella, resto } = separarHuella(descriptor.claveHuella, valores);
-        await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, resto, idioma));
+        await cliente.actualizarPropiedades(item.pageId, traducir(resto));
         await cliente.reescribirCuerpo(item.pageId, documento.tareas);
-        await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, huella, idioma));
+        await cliente.actualizarPropiedades(item.pageId, traducir(huella));
         cuerposReescritos++;
     }
 

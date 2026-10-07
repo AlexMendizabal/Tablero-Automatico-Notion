@@ -52,6 +52,7 @@ export const TIPOS_PROPIEDAD = {
     diasSinActividad: 'number',
     actualizado: 'date',
     documento: 'url',
+    contribuyentes: 'multi_select',
     huella: 'rich_text',
 } as const;
 
@@ -79,6 +80,7 @@ export const TEXTOS_POR_IDIOMA = {
             diasSinActividad: 'Días sin actividad',
             actualizado: 'Actualizado',
             documento: 'Documento',
+            contribuyentes: 'Contribuyentes',
             huella: 'Huella',
         },
         estados: {
@@ -101,6 +103,7 @@ export const TEXTOS_POR_IDIOMA = {
             diasSinActividad: 'Days inactive',
             actualizado: 'Updated',
             documento: 'Document',
+            contribuyentes: 'Contributors',
             huella: 'Fingerprint',
         },
         estados: {
@@ -121,6 +124,9 @@ export const ESQUEMA_FEATURE: EsquemaEntidad<ClavePropiedad, Estado> = {
     claveHuella: 'huella',
     // Features no tiene propiedades de Notion: todo sale del repositorio.
     propiedadesDeNotion: [],
+    // Contribuyentes se agregó con tableros ya en uso: si la base no tiene
+    // la columna, no se escribe (ver `propiedadesOpcionalesAusentes`).
+    propiedadesOpcionales: ['contribuyentes'],
     textos: TEXTOS_POR_IDIOMA,
 };
 
@@ -155,6 +161,7 @@ export function construirValoresPropiedades(fila: FilaTablero, idioma: Idioma = 
         diasSinActividad: { number: fila.diasSinActividad },
         actualizado: { date: { start: fila.actualizado } },
         documento: { url: fila.documento },
+        contribuyentes: { multi_select: fila.contribuyentes.map((name) => ({ name })) },
         huella: { rich_text: textoRico(fila.huella) },
     };
 }
@@ -273,6 +280,7 @@ export function crearDescriptorFeature(ajustes: AjustesProyecto = AJUSTES_POR_DE
         clave: 'feature',
         carpeta: ajustes.carpetaFeatures,
         variableBaseNotion: 'NOTION_TABLERO_DB_ID',
+        nombreBase: 'Features',
         parsearDocumento,
         derivarEstado,
         construirFila: (parametros) => construirFila(parametros, ajustes),

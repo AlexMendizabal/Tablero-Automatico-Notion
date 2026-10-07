@@ -91,6 +91,7 @@ export interface ValoresPropiedades {
     diasSinActividad: { number: number };
     actualizado: { date: { start: string } };
     documento: { url: string };
+    contribuyentes: { multi_select: Array<{ name: string }> };
     huella: { rich_text: RichTextArray };
 }
 

@@ -19,7 +19,7 @@ import '../helpers/aislar-board-language';
 // ---------------------------------------------------------------------------
 
 describe('construirPropiedadesNotion', () => {
-    test('genera los 11 nombres y tipos exactos que exige el esquema de Notion', () => {
+    test('genera los 12 nombres y tipos exactos que exige el esquema de Notion', () => {
         const fila = filaBase();
         const propiedades: PropiedadesNotion = construirPropiedadesNotion(fila);
 
@@ -33,6 +33,7 @@ describe('construirPropiedadesNotion', () => {
         expect(propiedades['Días sin actividad'].number).toBe(5);
         expect(propiedades.Actualizado.date.start).toBe('2026-09-01T00:00:00.000Z');
         expect(propiedades.Documento.url).toBe('https://github.com/owner/repo/blob/master/odd/tasks/feature-x.md');
+        expect(propiedades.Contribuyentes.multi_select).toEqual([]);
         expect(propiedades.Huella.rich_text[0].text.content).toBe('abc123');
     });
 

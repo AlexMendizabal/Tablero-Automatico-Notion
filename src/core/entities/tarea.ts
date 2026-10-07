@@ -90,6 +90,8 @@ export const ESQUEMA_TAREA: EsquemaEntidad<ClavePropiedadTarea, Estado> = {
     claveHuella: 'huella',
     // El Responsable se asigna a mano en Notion: se valida, nunca se escribe.
     propiedadesDeNotion: ['responsable'],
+    // Como en Features: sin la columna en la base, no se escribe.
+    propiedadesOpcionales: ['contribuyentes'],
     textos: TEXTOS_TAREA_POR_IDIOMA,
 };
 
@@ -234,6 +236,7 @@ export function crearDescriptorTarea(
         clave: 'tarea',
         carpeta: ajustes.carpetaTareas,
         variableBaseNotion: 'NOTION_TAREAS_DB_ID',
+        nombreBase: 'Tareas',
         ...(slugsFeatures || relacion ? { avisosDocumentos: avisos } : {}),
         ...(relacion ? { detallePlan: (filas: FilaTarea[]) => detallePlanRelacion(filas, relacion) } : {}),
         parsearDocumento: parsearDocumentoTarea,
