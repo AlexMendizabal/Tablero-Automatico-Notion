@@ -41,3 +41,51 @@ describe('listarDocumentosODD — carpeta faltante o vacía (fix 5 del review de
         expect(() => listarDocumentosODD(raiz, 'odd/tasks')).toThrow(/ningún documento/i);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Carpeta opcional (Tareas): faltante o vacía es "sin documentos", no error
+// ---------------------------------------------------------------------------
+
+describe('listarDocumentosODD — carpeta opcional', () => {
+    const raicesCreadas: string[] = [];
+    afterAll(() => {
+        for (const raiz of raicesCreadas) fs.rmSync(raiz, { recursive: true, force: true });
+    });
+    function raizNueva(): string {
+        const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-tablero-opcional-'));
+        raicesCreadas.push(raiz);
+        return raiz;
+    }
+
+    test('inexistente: devuelve [] en vez de lanzar', () => {
+        expect(listarDocumentosODD(raizNueva(), 'odd/tareas', { opcional: true })).toEqual([]);
+    });
+
+    test('existente pero sin ningún ".md": devuelve []', () => {
+        const raiz = raizNueva();
+        fs.mkdirSync(path.join(raiz, 'odd', 'tareas'), { recursive: true });
+        fs.writeFileSync(path.join(raiz, 'odd', 'tareas', 'notas.txt'), 'x');
+
+        expect(listarDocumentosODD(raiz, 'odd/tareas', { opcional: true })).toEqual([]);
+    });
+
+    test('con documentos: los lee igual que una carpeta obligatoria', () => {
+        const raiz = raizNueva();
+        fs.mkdirSync(path.join(raiz, 'odd', 'tareas'), { recursive: true });
+        fs.writeFileSync(path.join(raiz, 'odd', 'tareas', 'b.md'), 'B');
+        fs.writeFileSync(path.join(raiz, 'odd', 'tareas', 'a.md'), 'A');
+
+        expect(listarDocumentosODD(raiz, 'odd/tareas', { opcional: true })).toEqual([
+            { slug: 'a', contenido: 'A' },
+            { slug: 'b', contenido: 'B' },
+        ]);
+    });
+
+    test('una ruta que existe pero NO es una carpeta sigue siendo error', () => {
+        const raiz = raizNueva();
+        fs.mkdirSync(path.join(raiz, 'odd'), { recursive: true });
+        fs.writeFileSync(path.join(raiz, 'odd', 'tareas'), 'soy un archivo');
+
+        expect(() => listarDocumentosODD(raiz, 'odd/tareas', { opcional: true })).toThrow(/odd\/tareas/);
+    });
+});

@@ -79,3 +79,17 @@ describe('normalizarIdBaseNotion (T7)', () => {
         expect(resultado.ok).toBe(false);
     });
 });
+
+describe('normalizarIdBaseNotion — variable de entorno en el mensaje', () => {
+    test('por defecto nombra NOTION_TABLERO_DB_ID; para Tareas, la variable recibida', () => {
+        const features = normalizarIdBaseNotion('no-es-un-id');
+        const tareas = normalizarIdBaseNotion('no-es-un-id', 'NOTION_TAREAS_DB_ID');
+
+        expect(!features.ok && features.error).toMatch(/^NOTION_TABLERO_DB_ID no contiene un ID de base de Notion/);
+        expect(!tareas.ok && tareas.error).toMatch(/^NOTION_TAREAS_DB_ID no contiene un ID de base de Notion/);
+        expect(normalizarIdBaseNotion('0123456789abcdef0123456789abcdef', 'NOTION_TAREAS_DB_ID')).toEqual({
+            ok: true,
+            id: '0123456789abcdef0123456789abcdef',
+        });
+    });
+});

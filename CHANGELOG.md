@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Advanced tasks: a second synchronizable entity, **Tarea**, read from
+  `odd/tareas/*.md` (folder configurable with `TABLERO_CARPETA_TAREAS`). Same
+  document format as features plus an optional `feature: "<slug>"` parent key;
+  a missing parent is reported as a warning, not an error. Tasks are synced
+  after features into their own Notion database (`NOTION_TAREAS_DB_ID`, ID or
+  URL; same columns as the board, with the title column named `Tarea`/`Task`).
+  Without `NOTION_TAREAS_DB_ID` they are skipped with an informational line;
+  without a tasks folder nothing changes. `--dry-run` without credentials
+  prints a second `Tareas:` block with the parent feature slug.
+
 ### Changed
 
 - Internal refactor: the single sync script is split into `src/core`,

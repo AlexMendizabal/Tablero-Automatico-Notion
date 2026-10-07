@@ -1,7 +1,7 @@
 /**
  * Parser del documento ODD (frontmatter, título y sección de tareas).
  */
-import type { ResultadoParseoDocumento, TareaDocumento } from './types';
+import type { DocumentoODD, ResultadoParseoDocumento, TareaDocumento } from './types';
 
 // ---------------------------------------------------------------------------
 // parsearDocumento
@@ -12,14 +12,49 @@ const REGEX_FRONTMATTER_DELIM = /^---\s*$/;
  *  "commits: [...]"), generalizado desde el "ramas:" original para admitir
  *  ambas claves en cualquier orden. */
 const REGEX_CLAVE_FRONTMATTER = /^([A-Za-z_]+):\s*(.*)$/;
-/** Clave de frontmatter tal como se escribe (español o inglés, se aceptan
- *  siempre las dos, sin importar `BOARD_LANGUAGE`) → clave canónica. Usar
- *  las dos grafías del mismo concepto en un documento es clave duplicada. */
-const CLAVES_FRONTMATTER_VALIDAS = new Map<string, 'ramas' | 'commits'>([
-    ['ramas', 'ramas'],
-    ['branches', 'ramas'],
-    ['commits', 'commits'],
-]);
+
+/** Clave canónica de frontmatter. `feature` (slug de la feature padre) solo
+ *  la admite el formato de Tareas. */
+export type ClaveFrontmatter = 'ramas' | 'commits' | 'feature';
+
+/** Qué claves de frontmatter admite una entidad. */
+export interface FormatoFrontmatter {
+    /** Clave tal como se escribe (español o inglés, se aceptan siempre las
+     *  dos, sin importar `BOARD_LANGUAGE`) → clave canónica. Usar las dos
+     *  grafías del mismo concepto en un documento es clave duplicada. */
+    claves: ReadonlyMap<string, ClaveFrontmatter>;
+    /** Lista legible de las claves admitidas, para el mensaje de clave
+     *  desconocida. */
+    descripcion: string;
+}
+
+/** Features: `ramas` (o `branches`) y `commits`. */
+export const FORMATO_FRONTMATTER_FEATURE: FormatoFrontmatter = {
+    claves: new Map<string, ClaveFrontmatter>([
+        ['ramas', 'ramas'],
+        ['branches', 'ramas'],
+        ['commits', 'commits'],
+    ]),
+    descripcion: "'ramas' (o 'branches') y 'commits'",
+};
+
+/** Tareas: las de Features más `feature` (slug de la feature padre). */
+export const FORMATO_FRONTMATTER_TAREA: FormatoFrontmatter = {
+    claves: new Map<string, ClaveFrontmatter>([
+        ['ramas', 'ramas'],
+        ['branches', 'ramas'],
+        ['commits', 'commits'],
+        ['feature', 'feature'],
+    ]),
+    descripcion: "'ramas' (o 'branches'), 'commits' y 'feature'",
+};
+
+/** Resultado de `parsearDocumentoConFormato`: el documento de siempre más el
+ *  slug de la feature padre (`null` si el documento no declara `feature`, o
+ *  si su formato no la admite). */
+export type ResultadoParseoConFormato =
+    | { ok: true; documento: DocumentoODD; feature: string | null }
+    | { ok: false; errores: string[] };
 /** Hash de commit: hexadecimal en minúscula, EXACTAMENTE 40 caracteres (hash
  *  completo). El contrato lo exige completo a propósito: uno abreviado puede
  *  volverse ambiguo cuando el repo crece. */
@@ -80,17 +115,32 @@ function calcularLineasDentroDeBloqueCodigo(lineas: string[]): boolean[] {
     return dentro;
 }
 
+/** Documento de Feature: frontmatter con `ramas`/`branches` y `commits`. */
 export function parsearDocumento(slug: string, contenidoBruto: string): ResultadoParseoDocumento {
+    const resultado = parsearDocumentoConFormato(slug, contenidoBruto, FORMATO_FRONTMATTER_FEATURE);
+    return resultado.ok ? { ok: true, documento: resultado.documento } : resultado;
+}
+
+/** Parser común a todas las entidades; `formato` dice qué claves de
+ *  frontmatter admite. El resto del contrato (título, sección de tareas) es
+ *  el mismo para todas. */
+export function parsearDocumentoConFormato(
+    slug: string,
+    contenidoBruto: string,
+    formato: FormatoFrontmatter,
+): ResultadoParseoConFormato {
     const errores: string[] = [];
     const lineas = normalizarLineas(contenidoBruto);
     const dentroDeBloque = calcularLineasDentroDeBloqueCodigo(lineas);
 
     // --- Frontmatter: admite "ramas" o "branches" (obligatoria, una sola de
-    // las dos) y "commits" (opcional), una por línea, en cualquier orden.
-    // Cualquier otra clave, clave duplicada (incluidas las dos grafías de
-    // "ramas") o "ramas" ausente es error de formato. ---
+    // las dos), "commits" (opcional) y, si el formato la admite, "feature"
+    // (opcional), una por línea, en cualquier orden. Cualquier otra clave,
+    // clave duplicada (incluidas las dos grafías de "ramas") o "ramas"
+    // ausente es error de formato. ---
     let ramas: string[] | null = null;
     let commits: string[] = [];
+    let feature: string | null = null;
     let indiceFinDeFrontmatter = -1;
     if (!REGEX_FRONTMATTER_DELIM.test(lineas[0] ?? '')) {
         errores.push("Frontmatter faltante o inválido: la línea 1 debe ser exactamente '---'.");
@@ -119,10 +169,10 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                     continue;
                 }
                 const [, clave, valor] = coincidencia;
-                const canonica = CLAVES_FRONTMATTER_VALIDAS.get(clave);
+                const canonica = formato.claves.get(clave);
                 if (canonica === undefined) {
                     errores.push(
-                        `Frontmatter faltante o inválido: clave desconocida "${clave}" (solo se admiten 'ramas' (o 'branches') y 'commits').`,
+                        `Frontmatter faltante o inválido: clave desconocida "${clave}" (solo se admiten ${formato.descripcion}).`,
                     );
                     continue;
                 }
@@ -177,6 +227,23 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
                 } catch {
                     errores.push(
                         "Frontmatter faltante o inválido: 'commits' debe ser JSON válido con comillas dobles.",
+                    );
+                }
+            }
+
+            const valorFeature = valoresPorClave.get('feature')?.valor;
+            if (valorFeature !== undefined) {
+                let valor: unknown;
+                try {
+                    valor = JSON.parse(valorFeature);
+                } catch {
+                    valor = undefined;
+                }
+                if (typeof valor === 'string' && valor.trim() !== '') {
+                    feature = valor.trim();
+                } else {
+                    errores.push(
+                        "Frontmatter faltante o inválido: 'feature' debe ser un string JSON no vacío con comillas dobles (el slug de la feature padre).",
                     );
                 }
             }
@@ -284,5 +351,6 @@ export function parsearDocumento(slug: string, contenidoBruto: string): Resultad
     return {
         ok: true,
         documento: { slug, ramas: ramas ?? [], commits, titulo: titulo ?? '', tareas },
+        feature,
     };
 }

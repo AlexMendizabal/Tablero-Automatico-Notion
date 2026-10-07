@@ -16,22 +16,29 @@ import * as path from 'node:path';
  * `.md`: un repo que usa este sync siempre tiene al menos un documento, así
  * que "cero filas" ahí es señal de que se corrió desde el lugar equivocado,
  * no de que no hay nada que sincronizar.
+ *
+ * Con `opcional` (la carpeta de Tareas, que un repo puede no tener), una
+ * carpeta que NO EXISTE o que no tiene ningún `.md` devuelve `[]`; cualquier
+ * otro fallo de lectura (ej. la ruta es un archivo) sigue lanzando.
  */
 export function listarDocumentosODD(
     raizRepo: string,
     carpetaRelativa: string,
+    opciones: { opcional?: boolean } = {},
 ): Array<{ slug: string; contenido: string }> {
     const carpeta = path.join(raizRepo, carpetaRelativa);
     let entradas: string[];
     try {
         entradas = fs.readdirSync(carpeta);
-    } catch {
+    } catch (error) {
+        if (opciones.opcional && (error as NodeJS.ErrnoException).code === 'ENOENT') return [];
         throw new Error(
             `No se encontró "${carpetaRelativa}" en "${raizRepo}". ¿Se corrió el comando desde la raíz del repositorio (o del worktree)?`,
         );
     }
     const archivos = entradas.filter((f) => f.toLowerCase().endsWith('.md'));
     if (archivos.length === 0) {
+        if (opciones.opcional) return [];
         throw new Error(`La carpeta "${carpetaRelativa}" en "${raizRepo}" no tiene ningún documento ".md".`);
     }
     return archivos.sort().map((archivo) => ({

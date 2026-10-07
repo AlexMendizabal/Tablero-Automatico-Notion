@@ -5,6 +5,7 @@
  * genéricas de esquema (`core/schema.ts`) que lo consumen.
  */
 import { crearDescriptorFeature, ESQUEMA_FEATURE, TIPOS_PROPIEDAD } from '../../src/core/entities/feature';
+import { avisosFeaturePadre, crearDescriptorTarea } from '../../src/core/entities/tarea';
 import type { EsquemaEntidad } from '../../src/core/entities/tipos';
 import {
     esquemaEsperadoEntidad,
@@ -12,7 +13,14 @@ import {
     traducirPropiedadesEntidad,
     validarEsquemaEntidad,
 } from '../../src/core/schema';
-import { ESQUEMA_CORRECTO_NOTION, filaBase } from '../helpers/fixtures';
+import {
+    docBase,
+    ESQUEMA_CORRECTO_NOTION,
+    ESQUEMA_CORRECTO_NOTION_TAREAS,
+    ESQUEMA_CORRECTO_NOTION_TAREAS_EN,
+    filaBase,
+    tarea,
+} from '../helpers/fixtures';
 
 import '../helpers/aislar-board-language';
 
@@ -64,7 +72,7 @@ describe('propiedades de Notion (propiedadesDeNotion)', () => {
 
 describe('descriptor de Feature', () => {
     test('expone el esquema de siempre, sin propiedades de Notion', () => {
-        const descriptor = crearDescriptorFeature({ carpetaFeatures: 'odd/tasks', ramaBaseDocumento: 'main' });
+        const descriptor = crearDescriptorFeature({ carpetaFeatures: 'odd/tasks', carpetaTareas: 'odd/tareas', ramaBaseDocumento: 'main' });
 
         expect(descriptor.clave).toBe('feature');
         expect(descriptor.carpeta).toBe('odd/tasks');
@@ -85,7 +93,11 @@ describe('descriptor de Feature', () => {
     });
 
     test('arma el enlace "Documento" con la carpeta y la rama base recibidas', () => {
-        const descriptor = crearDescriptorFeature({ carpetaFeatures: 'docs/features', ramaBaseDocumento: 'develop' });
+        const descriptor = crearDescriptorFeature({
+            carpetaFeatures: 'docs/features',
+            carpetaTareas: 'docs/tareas',
+            ramaBaseDocumento: 'develop',
+        });
         const fila = descriptor.construirFila({
             documento: { slug: 'x', ramas: [], commits: [], titulo: 'X', tareas: [] },
             todasLasRamas: [],
@@ -94,6 +106,7 @@ describe('descriptor de Feature', () => {
             hoy: new Date('2026-09-21T00:00:00Z'),
             ownerRepo: 'org/repo',
         });
+        expect(descriptor.carpeta).toBe('docs/features');
         expect(fila.documento).toBe('https://github.com/org/repo/blob/develop/docs/features/x.md');
     });
 });
@@ -115,5 +128,128 @@ describe('extraerPaginaExistente', () => {
             createdTime: '2026-01-01T00:00:00.000Z',
         });
         expect(extraerPaginaExistente(ESQUEMA_FEATURE, pagina, 'es').huella).toBe('');
+    });
+});
+
+describe('descriptor de Tarea', () => {
+    const AJUSTES_PROPIOS = { carpetaFeatures: 'docs/features', carpetaTareas: 'docs/tareas', ramaBaseDocumento: 'develop' };
+    const documentoTarea = (feature: string | null) => ({
+        slug: 'tarea-x',
+        ramas: ['feat/tarea-x*'],
+        commits: [],
+        titulo: 'Tarea X',
+        tareas: [tarea({ hecha: true }), tarea({ id: 'T2', nombre: 'Dos' })],
+        feature,
+    });
+    const parametrosFila = (feature: string | null) => ({
+        documento: documentoTarea(feature),
+        todasLasRamas: [{ nombre: 'feat/tarea-x-1', fecha: '2026-09-20T00:00:00Z' }],
+        todosLosPRs: [],
+        fechaDocumento: null,
+        hoy: new Date('2026-09-21T00:00:00Z'),
+        ownerRepo: 'org/repo',
+    });
+
+    test('su carpeta es la de los ajustes y su base tiene las columnas de Features con título "Tarea"/"Task"', () => {
+        const descriptor = crearDescriptorTarea(AJUSTES_PROPIOS);
+
+        expect(descriptor.clave).toBe('tarea');
+        expect(descriptor.carpeta).toBe('docs/tareas');
+        expect(descriptor.claveTitulo).toBe('tarea');
+        expect(descriptor.propiedadesDeNotion).toEqual([]);
+        expect(validarEsquemaEntidad(descriptor, ESQUEMA_CORRECTO_NOTION_TAREAS, 'es')).toEqual([]);
+        expect(validarEsquemaEntidad(descriptor, ESQUEMA_CORRECTO_NOTION_TAREAS_EN, 'en')).toEqual([]);
+        // Una base de Features (título "Feature") no sirve como base de Tareas.
+        expect(validarEsquemaEntidad(descriptor, ESQUEMA_CORRECTO_NOTION)).toEqual([
+            { nombre: 'Tarea', motivo: 'faltante', tipoEsperado: 'title' },
+        ]);
+    });
+
+    test('por defecto, la carpeta es "odd/tareas"', () => {
+        expect(crearDescriptorTarea().carpeta).toBe('odd/tareas');
+    });
+
+    test('parsea "feature" (padre) del frontmatter; un documento sin "feature" queda sin padre', () => {
+        const descriptor = crearDescriptorTarea();
+        const conPadre = descriptor.parsearDocumento('t', docBase({ frontmatter: '---\nramas: ["feat/x"]\nfeature: "padre"\n---' }));
+        const sinPadre = descriptor.parsearDocumento('t', docBase());
+
+        expect(conPadre.ok && conPadre.documento.feature).toBe('padre');
+        expect(sinPadre.ok && sinPadre.documento.feature).toBeNull();
+    });
+
+    test('la regla de estado es la de Features', () => {
+        expect(crearDescriptorTarea().derivarEstado).toBe(crearDescriptorFeature().derivarEstado);
+    });
+
+    test('arma la fila con el título, el padre y el enlace "Documento" de la carpeta de Tareas', () => {
+        const fila = crearDescriptorTarea(AJUSTES_PROPIOS).construirFila(parametrosFila('padre'));
+
+        expect(fila).toMatchObject({
+            tarea: 'Tarea X',
+            slug: 'tarea-x',
+            featurePadre: 'padre',
+            estado: 'En curso',
+            progreso: '1/2 tareas',
+            pendiente: 'T2 — Dos',
+            ramas: 'feat/tarea-x-1',
+            documento: 'https://github.com/org/repo/blob/develop/docs/tareas/tarea-x.md',
+        });
+        expect(fila).not.toHaveProperty('feature');
+    });
+
+    test('todas sus propiedades viajan a Notion; el padre no es una columna (todavía)', () => {
+        const descriptor = crearDescriptorTarea();
+        const fila = descriptor.construirFila(parametrosFila('padre'));
+
+        const es = traducirPropiedadesEntidad(descriptor, descriptor.construirValoresPropiedades(fila, 'es'), 'es');
+        const en = traducirPropiedadesEntidad(descriptor, descriptor.construirValoresPropiedades(fila, 'en'), 'en');
+
+        expect(Object.keys(es)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_TAREAS));
+        expect(Object.keys(en)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_TAREAS_EN));
+        expect(es.Tarea).toEqual({ title: [{ type: 'text', text: { content: 'Tarea X' } }] });
+        expect(en.Status).toEqual({ select: { name: 'In progress' } });
+        expect(JSON.stringify(es)).not.toContain('padre');
+    });
+
+    test('la forma legible muestra el slug de la feature padre, o "—" si no tiene', () => {
+        const descriptor = crearDescriptorTarea();
+
+        expect(descriptor.encabezadoFilaLegible).toBe('slug | feature | estado | progreso | PRs abiertos | días | actualizado');
+        expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila('padre')))).toMatch(
+            /^tarea-x\s+\| padre\s+\| En curso\s+\| 1\/2 tareas\s+\| —\s+\| 1d\s+\| 2026-09-20T00:00:00/,
+        );
+        expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila(null)))).toMatch(
+            /^tarea-x\s+\| —\s+\| En curso/,
+        );
+    });
+});
+
+describe('Tarea — feature padre inexistente (avisosFeaturePadre)', () => {
+    const doc = (slug: string, feature: string | null) => ({ slug, ramas: [], commits: [], titulo: slug, tareas: [], feature });
+
+    test('avisa solo de las tareas cuyo padre no es un documento de Features', () => {
+        const avisos = avisosFeaturePadre(
+            [doc('sin-padre', null), doc('con-padre', 'existe'), doc('huerfana', 'no-existe')],
+            new Set(['existe']),
+            'odd/tasks',
+        );
+        expect(avisos).toEqual([
+            {
+                slug: 'huerfana',
+                mensajes: ['La feature padre "no-existe" no existe: no hay ningún documento "no-existe.md" en "odd/tasks".'],
+            },
+        ]);
+    });
+
+    test('el descriptor valida el padre solo si recibe los slugs de Features', () => {
+        expect(crearDescriptorTarea().avisosDocumentos).toBeUndefined();
+        const descriptor = crearDescriptorTarea(undefined, new Set(['existe']));
+        expect(descriptor.avisosDocumentos?.([doc('t', 'otra')])).toHaveLength(1);
+    });
+
+    test('cada descriptor nombra la variable de su base de Notion', () => {
+        expect(crearDescriptorFeature().variableBaseNotion).toBe('NOTION_TABLERO_DB_ID');
+        expect(crearDescriptorTarea().variableBaseNotion).toBe('NOTION_TAREAS_DB_ID');
     });
 });

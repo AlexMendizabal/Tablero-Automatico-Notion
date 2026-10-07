@@ -1,5 +1,5 @@
 /**
- * Contrato de una entidad sincronizable (hoy Feature; más adelante Tarea).
+ * Contrato de una entidad sincronizable (Feature y Tarea).
  *
  * Un descriptor reúne TODO lo que cambia de una entidad a otra: la carpeta de
  * sus documentos, el esquema de su base de Notion (claves internas → tipo de
@@ -55,6 +55,12 @@ export interface EsquemaEntidad<C extends string = string, E extends string = st
     textos: Readonly<Record<Idioma, TextosEntidad<C, E>>>;
 }
 
+/** Aviso sobre un documento (ver `DescriptorEntidad.avisosDocumentos`). */
+export interface AvisoDocumento {
+    slug: string;
+    mensajes: string[];
+}
+
 /** Lo mínimo que la orquestación lee de una fila calculada. */
 export interface FilaEntidad {
     slug: string;
@@ -90,6 +96,8 @@ export interface DescriptorEntidad<
     clave: string;
     /** Carpeta de sus documentos, relativa a la raíz del repositorio. */
     carpeta: string;
+    /** Variable de entorno del ID de su base de Notion (para los mensajes). */
+    variableBaseNotion: string;
     parsearDocumento(slug: string, contenido: string): ResultadoParseoEntidad<D>;
     /** Regla de estado a partir de las tareas del documento y la cantidad de
      *  PRs abiertos que matchean sus ramas. */
@@ -99,4 +107,10 @@ export interface DescriptorEntidad<
     construirValoresPropiedades(fila: F, idioma: Idioma): Partial<Record<C, unknown>>;
     /** Forma legible de la fila para "--dry-run" sin credenciales. */
     formatearFilaLegible(fila: F): string;
+    /** Encabezado de las columnas de `formatearFilaLegible`. */
+    encabezadoFilaLegible: string;
+    /** Avisos sobre documentos válidos que NO son errores de formato (el
+     *  documento se sincroniza igual y el código de salida no cambia), ej.
+     *  una feature padre inexistente. Opcional: sin él, no hay avisos. */
+    avisosDocumentos?(documentos: D[]): AvisoDocumento[];
 }

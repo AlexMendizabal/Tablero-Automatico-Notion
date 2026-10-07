@@ -179,6 +179,18 @@ export function construirFila(
     parametros: ParametrosConstruirFila,
     ajustes: AjustesProyecto = AJUSTES_POR_DEFECTO,
 ): FilaTablero {
+    return construirFilaEnCarpeta(parametros, ajustes.carpetaFeatures, ajustes.ramaBaseDocumento);
+}
+
+/** Armado de la fila de un documento ODD de `carpeta` (relativa a la raíz
+ *  del repositorio), con el enlace "Documento" sobre `ramaBaseDocumento`.
+ *  Lo comparten Features y Tareas (ver `entities/tarea.ts`): mismas columnas,
+ *  misma regla de estado. */
+export function construirFilaEnCarpeta(
+    parametros: ParametrosConstruirFila,
+    carpeta: string,
+    ramaBaseDocumento: string,
+): FilaTablero {
     const { documento, todasLasRamas, todosLosPRs, fechasCommits, fechaDocumento, hoy, ownerRepo } = parametros;
     const idioma = parametros.idioma ?? 'es';
 
@@ -221,10 +233,13 @@ export function construirFila(
         ramas: recortarParaNotion([...ramasQueMatchean.map((r) => r.nombre)].sort().join(', ')),
         diasSinActividad: diasSinActividad(actualizado, hoy),
         actualizado,
-        documento: `https://github.com/${ownerRepo}/blob/${ajustes.ramaBaseDocumento}/${ajustes.carpetaFeatures}/${documento.slug}.md`,
+        documento: `https://github.com/${ownerRepo}/blob/${ramaBaseDocumento}/${carpeta}/${documento.slug}.md`,
         huella: calcularHuella(documento.tareas),
     };
 }
+
+/** Encabezado de `formatearFilaLegible` ("--dry-run" sin credenciales). */
+export const ENCABEZADO_FILA_LEGIBLE = 'slug | estado | progreso | PRs abiertos | días | actualizado';
 
 export function formatearFilaLegible(fila: FilaTablero): string {
     return [
@@ -250,10 +265,12 @@ export function crearDescriptorFeature(ajustes: AjustesProyecto = AJUSTES_POR_DE
         ...ESQUEMA_FEATURE,
         clave: 'feature',
         carpeta: ajustes.carpetaFeatures,
+        variableBaseNotion: 'NOTION_TABLERO_DB_ID',
         parsearDocumento,
         derivarEstado,
         construirFila: (parametros) => construirFila(parametros, ajustes),
         construirValoresPropiedades,
         formatearFilaLegible,
+        encabezadoFilaLegible: ENCABEZADO_FILA_LEGIBLE,
     };
 }

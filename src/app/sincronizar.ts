@@ -6,7 +6,8 @@ import { mensajeDeError } from '../core/errores';
 import { type ResultadoIdioma, resolverIdiomaTablero } from '../core/i18n';
 import { normalizarIdBaseNotion } from '../core/id-notion';
 import { crearDescriptorFeature } from '../core/entities/feature';
-import type { DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
+import { crearDescriptorTarea } from '../core/entities/tarea';
+import type { AvisoDocumento, DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
 import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
 import type { DocumentoODD, DuplicadoSlug } from '../core/types';
@@ -47,6 +48,21 @@ export interface ResumenSincronizacion {
      *  imprimían contadores de escritura en cero, indistinguibles de un plan
      *  real sin altas, y se agregó este campo para distinguirlos). */
     razonNoCalculado?: string;
+    /** Avisos sobre documentos que se sincronizan igual (ver
+     *  `DescriptorEntidad.avisosDocumentos`). Solo presente si hay alguno;
+     *  no cambian el código de salida. */
+    avisos?: AvisoDocumento[];
+    /** Slugs de TODOS los documentos leídos de la carpeta de la entidad
+     *  (válidos o no). Ausente si la carpeta no se pudo leer. No se imprime:
+     *  `sincronizar` lo usa para validar la feature padre de las Tareas. */
+    slugsDocumentos?: string[];
+}
+
+/** Resumen de `sincronizar`: el de Features (los mismos campos de siempre),
+ *  con `codigo` agregado (distinto de 0 si CUALQUIER entidad falló) y, si
+ *  se sincronizaron Tareas, su propio resumen en `tareas`. */
+export interface ResumenGeneral extends ResumenSincronizacion {
+    tareas?: ResumenSincronizacion;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +120,13 @@ function imprimirResumenFinal(log: (linea: string) => void, resumen: ResumenSinc
             log(`  ${duplicado.slug}: ${duplicado.pageIds.join(', ')}`);
         }
     }
+    if (resumen.avisos && resumen.avisos.length > 0) {
+        log(`Avisos: ${resumen.avisos.length}`);
+        for (const aviso of resumen.avisos) {
+            log(`  ${aviso.slug}:`);
+            for (const mensaje of aviso.mensajes) log(`    - ${mensaje}`);
+        }
+    }
     log(`Errores de formato: ${resumen.erroresDeFormato.length}`);
     for (const error of resumen.erroresDeFormato) {
         log(`  ${error.slug}:`);
@@ -155,16 +178,81 @@ function separarHuella<C extends string>(
     return { huella, resto };
 }
 
-/** Sincroniza las Features (la única entidad, por ahora). */
+/** Línea informativa (no es un error) cuando hay Tareas pero no base de
+ *  Notion para ellas. */
+const MENSAJE_SIN_BASE_TAREAS =
+    'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.';
+
+/**
+ * Sincroniza las Features y, después, las Tareas, cada una con
+ * `sincronizarEntidad` y su propia base de Notion. Reglas de las Tareas:
+ *
+ * - Sin documentos en su carpeta (no existe, o no tiene ningún `.md`): no
+ *   hacen nada ni imprimen nada — la salida es la de solo Features.
+ * - Con documentos, su salida va después de la de Features, bajo una línea
+ *   "Tareas:".
+ * - Con credenciales pero sin `NOTION_TAREAS_DB_ID`: se saltean con una
+ *   línea informativa (el código de salida no cambia).
+ * - Sin credenciales y sin "--dry-run": se saltean en silencio (Features ya
+ *   informó la falta de credenciales, con código 1).
+ * - Una tarea cuya feature padre no existe genera un aviso, no un error.
+ *
+ * El código de salida es distinto de 0 si cualquiera de las dos falló.
+ */
 export async function sincronizar(
     opciones: OpcionesCLI,
     dependencias: DependenciasSincronizar,
-): Promise<ResumenSincronizacion> {
-    return sincronizarEntidad(
-        crearDescriptorFeature(dependencias.ajustes),
-        opciones,
-        dependencias,
-    );
+): Promise<ResumenGeneral> {
+    const log = dependencias.log ?? (() => {});
+    // Se cargan una sola vez para las dos entidades.
+    const credenciales =
+        dependencias.credenciales !== undefined
+            ? dependencias.credenciales
+            : dependencias.configuracion.cargarCredenciales(dependencias.raizRepo);
+
+    const features = await sincronizarEntidad(crearDescriptorFeature(dependencias.ajustes), opciones, {
+        ...dependencias,
+        credenciales,
+    });
+    const conTareas = (tareas: ResumenSincronizacion): ResumenGeneral => ({
+        ...features,
+        codigo: Math.max(features.codigo, tareas.codigo),
+        tareas,
+    });
+
+    // Sin la lista de documentos de Features (carpeta ilegible) no se puede
+    // validar la feature padre: no se avisa nada en vez de avisar de todas.
+    const slugsFeatures = features.slugsDocumentos ? new Set(features.slugsDocumentos) : undefined;
+    const descriptorTarea = crearDescriptorTarea(dependencias.ajustes, slugsFeatures);
+
+    let documentosTareas: Array<{ slug: string; contenido: string }>;
+    try {
+        documentosTareas = dependencias.listarDocumentos(descriptorTarea.carpeta, { opcional: true });
+    } catch (error) {
+        log('');
+        log('Tareas:');
+        return conTareas(resumenDeErrorEntorno(log, descriptorTarea.clave, mensajeDeError(error)));
+    }
+    if (documentosTareas.length === 0) return features;
+    if (!credenciales && !opciones.dryRun) return features;
+
+    log('');
+    log('Tareas:');
+    if (credenciales && !credenciales.databaseIdTareas) {
+        log(MENSAJE_SIN_BASE_TAREAS);
+        return features;
+    }
+
+    const tareas = await sincronizarEntidad(descriptorTarea, opciones, {
+        ...dependencias,
+        // Ya leídos (y no vacíos) más arriba.
+        listarDocumentos: () => documentosTareas,
+        credenciales:
+            credenciales && credenciales.databaseIdTareas
+                ? { token: credenciales.token, databaseId: credenciales.databaseIdTareas }
+                : null,
+    });
+    return conTareas(tareas);
 }
 
 /**
@@ -206,6 +294,21 @@ export async function sincronizarEntidad<
         else erroresDeFormato.push({ slug, errores: resultado.errores });
     }
 
+    // Lo que todo resumen lleva a partir de acá: los slugs leídos y, si hay,
+    // los avisos (que no son errores de formato ni cambian el código).
+    const slugsDocumentos = documentosLeidos.map((d) => d.slug);
+    const avisos = descriptor.avisosDocumentos?.(documentosParseados) ?? [];
+    const completar = (resumen: ResumenSincronizacion): ResumenSincronizacion => ({
+        ...resumen,
+        ...(avisos.length > 0 ? { avisos } : {}),
+        slugsDocumentos,
+    });
+    const cerrar = (resumen: ResumenSincronizacion): ResumenSincronizacion => {
+        const completo = completar(resumen);
+        imprimirResumenFinal(log, completo);
+        return completo;
+    };
+
     let credenciales =
         dependencias.credenciales !== undefined
             ? dependencias.credenciales
@@ -232,8 +335,7 @@ export async function sincronizarEntidad<
             consultoNotion: false,
             razonNoCalculado: RAZON_IDIOMA_INVALIDO,
         };
-        imprimirResumenFinal(log, resumen);
-        return resumen;
+        return cerrar(resumen);
     }
     const idioma = resultadoIdioma.idioma;
 
@@ -242,7 +344,7 @@ export async function sincronizarEntidad<
     // aplica tanto si las credenciales vinieron inyectadas como si salieron
     // de "cargarCredenciales", y tanto en "--dry-run" como en corrida real.
     if (credenciales) {
-        const resultadoId = normalizarIdBaseNotion(credenciales.databaseId);
+        const resultadoId = normalizarIdBaseNotion(credenciales.databaseId, descriptor.variableBaseNotion);
         if (!resultadoId.ok) {
             log(resultadoId.error);
             const resumen: ResumenSincronizacion = {
@@ -256,8 +358,7 @@ export async function sincronizarEntidad<
                 consultoNotion: false,
                 razonNoCalculado: RAZON_ID_INVALIDO,
             };
-            imprimirResumenFinal(log, resumen);
-            return resumen;
+            return cerrar(resumen);
         }
         credenciales = { ...credenciales, databaseId: resultadoId.id };
     }
@@ -276,8 +377,7 @@ export async function sincronizarEntidad<
             erroresDeFormato,
             consultoNotion: false,
         };
-        imprimirResumenFinal(log, resumen);
-        return resumen;
+        return cerrar(resumen);
     }
 
     // A partir de acá está autorizado tocar git/gh (dry-run con o sin
@@ -297,18 +397,18 @@ export async function sincronizarEntidad<
         try {
             esSuperficial = dependencias.repositorio.esRepoSuperficial();
         } catch (error) {
-            return resumenDeErrorEntorno(
+            return completar(resumenDeErrorEntorno(
                 log,
                 entidad,
                 `No se pudo determinar si el repositorio es superficial (¿git no está disponible?): ${mensajeDeError(error)}`,
-            );
+            ));
         }
         if (esSuperficial) {
-            return resumenDeErrorEntorno(
+            return completar(resumenDeErrorEntorno(
                 log,
                 entidad,
                 'Repositorio superficial: las anclas de "commits" requieren un clon completo (fetch-depth: 0).',
-            );
+            ));
         }
     }
 
@@ -360,7 +460,7 @@ export async function sincronizarEntidad<
 
     if (!credenciales) {
         log('--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:');
-        log('slug | estado | progreso | PRs abiertos | días | actualizado');
+        log(descriptor.encabezadoFilaLegible);
         for (const fila of filas) log(descriptor.formatearFilaLegible(fila));
         const resumen: ResumenSincronizacion = {
             entidad,
@@ -372,8 +472,7 @@ export async function sincronizarEntidad<
             erroresDeFormato,
             consultoNotion: false,
         };
-        imprimirResumenFinal(log, resumen);
-        return resumen;
+        return cerrar(resumen);
     }
 
     const cliente = dependencias.crearClienteNotion(credenciales.token);
@@ -413,8 +512,7 @@ export async function sincronizarEntidad<
             consultoNotion: true,
             razonNoCalculado: RAZON_ESQUEMA_INVALIDO,
         };
-        imprimirResumenFinal(log, resumen);
-        return resumen;
+        return cerrar(resumen);
     }
 
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
@@ -446,8 +544,7 @@ export async function sincronizarEntidad<
             },
             duplicadas,
         };
-        imprimirResumenFinal(log, resumen);
-        return resumen;
+        return cerrar(resumen);
     }
 
     // ("Huella al final"): la Huella se escribe SIEMPRE
@@ -501,6 +598,5 @@ export async function sincronizarEntidad<
         consultoNotion: true,
         duplicadas,
     };
-    imprimirResumenFinal(log, resumen);
-    return resumen;
+    return cerrar(resumen);
 }

@@ -14,10 +14,15 @@ const REGEX_UUID_CON_GUIONES = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}
  *  "-" (el título de la página, ej. "Tablero-de-features-<32hex>"). */
 const REGEX_ID_AL_FINAL_DE_SEGMENTO = /(?:^|-)([0-9a-f]{32})$/i;
 
-const MENSAJE_ID_BASE_INVALIDO =
-    'NOTION_TABLERO_DB_ID no contiene un ID de base de Notion: se espera el ID de 32 caracteres ' +
-    'hexadecimales, o la URL completa de la base de Notion. El "?v=..." al final de una URL de Notion ' +
-    'identifica la VISTA, no la base, y se ignora.';
+/** `variable`: la variable de entorno de donde vino el valor (Features:
+ *  `NOTION_TABLERO_DB_ID`; Tareas: `NOTION_TAREAS_DB_ID`). */
+function mensajeIdBaseInvalido(variable: string): string {
+    return (
+        `${variable} no contiene un ID de base de Notion: se espera el ID de 32 caracteres ` +
+        'hexadecimales, o la URL completa de la base de Notion. El "?v=..." al final de una URL de Notion ' +
+        'identifica la VISTA, no la base, y se ignora.'
+    );
+}
 
 function extraerIdDeSegmento(segmento: string): string | null {
     if (REGEX_ID_32_HEX.test(segmento)) return segmento.toLowerCase();
@@ -37,14 +42,17 @@ function extraerIdDeSegmento(segmento: string): string | null {
  * 32 hex en minúscula sin guiones: la API de Notion acepta las dos formas,
  * pero un único formato interno simplifica los logs y los tests.
  */
-export function normalizarIdBaseNotion(valor: string): ResultadoNormalizacionId {
+export function normalizarIdBaseNotion(
+    valor: string,
+    variable: string = 'NOTION_TABLERO_DB_ID',
+): ResultadoNormalizacionId {
     const sinQueryNiHash = valor.trim().split('?')[0].split('#')[0].trim();
-    if (sinQueryNiHash === '') return { ok: false, error: MENSAJE_ID_BASE_INVALIDO };
+    if (sinQueryNiHash === '') return { ok: false, error: mensajeIdBaseInvalido(variable) };
 
     const segmentos = sinQueryNiHash.split('/').filter((s) => s.trim() !== '');
     const ultimoSegmento = segmentos.length > 0 ? segmentos[segmentos.length - 1] : sinQueryNiHash;
 
     const id = extraerIdDeSegmento(ultimoSegmento);
-    if (id === null) return { ok: false, error: MENSAJE_ID_BASE_INVALIDO };
+    if (id === null) return { ok: false, error: mensajeIdBaseInvalido(variable) };
     return { ok: true, id };
 }

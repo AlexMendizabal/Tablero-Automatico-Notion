@@ -39,7 +39,7 @@ export interface EntradaComposicion {
     raizRepo: string;
     ejecutar: EjecutarComando;
     fetchInyectado: FetchInyectado;
-    listarDocumentos: (carpeta: string) => Array<{ slug: string; contenido: string }>;
+    listarDocumentos: DependenciasSincronizar['listarDocumentos'];
     /** Por defecto, `dormirPorDefecto` (espera real entre reintentos). */
     dormir?: Dormir;
     hoy?: Date;
@@ -83,7 +83,8 @@ export function componerDependencias(entrada: EntradaComposicion): DependenciasS
 // ---------------------------------------------------------------------------
 
 export const AYUDA = `
-Sync del estado de las features (odd/tasks/*.md) hacia un tablero de Notion.
+Sync del estado de las features (odd/tasks/*.md) y, si las hay, de las
+tareas (odd/tareas/*.md) hacia Notion.
 
 Uso:
   npm run sync -- [--dry-run] [--ayuda]
@@ -100,7 +101,11 @@ Variables de entorno requeridas (salvo con --dry-run):
   NOTION_TABLERO_DB_ID
 
 Variables de entorno opcionales:
-  BOARD_LANGUAGE   Idioma del tablero de Notion: "es" (por defecto) o "en".
+  BOARD_LANGUAGE           Idioma del tablero de Notion: "es" (por defecto) o "en".
+  NOTION_TAREAS_DB_ID      Base de Notion de las Tareas. Sin ella, las Tareas no
+                           se escriben en Notion.
+  TABLERO_CARPETA          Carpeta de las Features (por defecto, odd/tasks).
+  TABLERO_CARPETA_TAREAS   Carpeta de las Tareas (por defecto, odd/tareas).
 `;
 
 function principal(argumentos: string[]): void {
@@ -128,7 +133,7 @@ function principal(argumentos: string[]): void {
             raizRepo,
             ejecutar,
             fetchInyectado,
-            listarDocumentos: (carpeta) => listarDocumentosODD(raizRepo, carpeta),
+            listarDocumentos: (carpeta, opciones) => listarDocumentosODD(raizRepo, carpeta, opciones),
             log: (linea) => console.log(linea),
         }),
     )

@@ -159,6 +159,11 @@ Optional variables, with their default value in parentheses:
   to the repository root.
 - `TABLERO_RAMA_BASE` (`main`): base branch used to build the link in each
   row's "Documento" ("Document") property.
+- `NOTION_TAREAS_DB_ID` (unset): ID (or full URL) of the Notion database for
+  advanced tasks (see [Advanced tasks](#advanced-tasks-optional)). Unset
+  means tasks are not written to Notion.
+- `TABLERO_CARPETA_TAREAS` (`odd/tareas`): folder where the task documents
+  live, relative to the repository root.
 
 ## Usage
 
@@ -278,6 +283,53 @@ Rules:
 A complete example, with one task done, one pending and one pending manual
 test, lives in [`odd/tasks/ejemplo-feature.md`](odd/tasks/ejemplo-feature.md)
 (written with the Spanish keywords; `branches` and `## Tasks` work the same).
+
+## Advanced tasks (optional)
+
+Besides features, the sync can track **advanced tasks**: pieces of work born
+in the repository, each with its own document, optionally attached to a
+parent feature. They are synced after the features, into a database of their
+own.
+
+1. **Documents**: `<TABLERO_CARPETA_TAREAS>/<slug>.md` (default
+   `odd/tareas/`), with the same format as a feature document plus an
+   optional `feature` key in the frontmatter: the slug of the parent feature,
+   as a JSON string.
+
+   ```markdown
+   ---
+   ramas: ["feat/<slug>*"]
+   feature: "<feature-slug>"
+   ---
+
+   # Human-readable task title
+
+   ## Tareas
+
+   - [ ] **T1 — Short name**: description.
+   ```
+
+   If `feature` names a slug with no document in `TABLERO_CARPETA`, the run
+   prints a warning ("Avisos") in the tasks summary; it is not a format error
+   and does not change the exit code. Example:
+   [`odd/tareas/ejemplo-tarea.md`](odd/tareas/ejemplo-tarea.md).
+2. **Notion database**: create a second database with the **same columns as
+   the board** (see [Create the Notion database](#create-the-notion-database)),
+   except the title column, which is called **`Tarea`** (`es`) or **`Task`**
+   (`en`) instead of `Feature`. Share it with the same integration.
+3. **Configuration**: set `NOTION_TAREAS_DB_ID` to its ID or URL (same rules as
+   `NOTION_TABLERO_DB_ID`). It uses the same `NOTION_TOKEN`.
+
+Behavior:
+
+- No task folder, or no `.md` in it: tasks do nothing and the output is the
+  same as before.
+- Task documents but no `NOTION_TAREAS_DB_ID`: features are synced as usual
+  and tasks are skipped with an informational line (exit code unaffected).
+- `--dry-run` without credentials: after the feature rows, a second block
+  labeled `Tareas:` lists the task rows, including the parent feature slug.
+- Any error in either entity (format, schema, invalid ID) makes the exit code
+  non-zero.
 
 ## How the status is derived
 
