@@ -34,7 +34,6 @@ describe('AJUSTES_PROYECTO (adapters/config.ts)', () => {
         process.env.TABLERO_CARPETA = 'carpeta/al-cargar';
         delete process.env.TABLERO_RAMA_BASE;
         jest.isolateModules(() => {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
             const config = require('../../src/adapters/config') as typeof import('../../src/adapters/config');
             process.env.TABLERO_CARPETA = 'carpeta/despues';
             expect(config.AJUSTES_PROYECTO).toEqual({ carpetaFeatures: 'carpeta/al-cargar', ramaBaseDocumento: 'main' });

@@ -10,15 +10,6 @@ import type { DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
 import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
 import type { DocumentoODD, DuplicadoSlug } from '../core/types';
-import { AJUSTES_PROYECTO, cargarCredenciales, leerBoardLanguage } from '../adapters/config';
-import { obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
-import {
-    obtenerEsRepoSuperficial,
-    obtenerFechaCommit,
-    obtenerFechaDocumento,
-    obtenerRamasConFecha,
-} from '../adapters/git-cli';
-import { crearClienteNotion, dormirPorDefecto } from '../adapters/notion-http';
 import type { DependenciasSincronizar } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
@@ -170,7 +161,7 @@ export async function sincronizar(
     dependencias: DependenciasSincronizar,
 ): Promise<ResumenSincronizacion> {
     return sincronizarEntidad(
-        crearDescriptorFeature(dependencias.ajustes ?? AJUSTES_PROYECTO),
+        crearDescriptorFeature(dependencias.ajustes),
         opciones,
         dependencias,
     );
@@ -218,7 +209,7 @@ export async function sincronizarEntidad<
     let credenciales =
         dependencias.credenciales !== undefined
             ? dependencias.credenciales
-            : cargarCredenciales(dependencias.raizRepo);
+            : dependencias.configuracion.cargarCredenciales(dependencias.raizRepo);
 
     // El idioma se resuelve DESPUÉS de cargar el ".env" (lo hace
     // "cargarCredenciales"), para que BOARD_LANGUAGE pueda vivir ahí también.
@@ -227,7 +218,7 @@ export async function sincronizarEntidad<
     const resultadoIdioma: ResultadoIdioma =
         dependencias.idioma !== undefined
             ? { ok: true, idioma: dependencias.idioma }
-            : resolverIdiomaTablero(leerBoardLanguage());
+            : resolverIdiomaTablero(dependencias.configuracion.leerBoardLanguage());
     if (!resultadoIdioma.ok) {
         log(resultadoIdioma.error);
         const resumen: ResumenSincronizacion = {
@@ -297,14 +288,14 @@ export async function sincronizarEntidad<
     // NO son "el commit no existe" (error de formato de un documento
     // puntual): que el repo sea un clon superficial (las anclas requieren
     // fetch-depth: 0) o que git directamente no pueda correr (ENOENT). En
-    // ambos casos la excepción de "obtenerEsRepoSuperficial" se deja
+    // ambos casos la excepción de "esRepoSuperficial" se deja
     // propagar a propósito (no tiene su propio try/catch) para distinguirlos
-    // de "obtenerFechaCommit", que sí atrapa el fallo puntual de un hash.
+    // de "fechaCommit", que sí atrapa el fallo puntual de un hash.
     const algunDocumentoDeclaraCommits = documentosParseados.some((d) => d.commits.length > 0);
     if (algunDocumentoDeclaraCommits) {
         let esSuperficial: boolean;
         try {
-            esSuperficial = obtenerEsRepoSuperficial(dependencias.ejecutar);
+            esSuperficial = dependencias.repositorio.esRepoSuperficial();
         } catch (error) {
             return resumenDeErrorEntorno(
                 log,
@@ -330,7 +321,7 @@ export async function sincronizarEntidad<
         const fechasCommits: string[] = [];
         let commitInexistente: string | null = null;
         for (const sha of documento.commits) {
-            const fecha = obtenerFechaCommit(dependencias.ejecutar, sha);
+            const fecha = dependencias.repositorio.fechaCommit(sha);
             if (fecha === null) {
                 commitInexistente = sha;
                 break;
@@ -350,9 +341,9 @@ export async function sincronizarEntidad<
         fechasCommitsPorSlug.set(documento.slug, fechasCommits);
     }
 
-    const todasLasRamas = obtenerRamasConFecha(dependencias.ejecutar);
-    const todosLosPRs = obtenerPRs(dependencias.ejecutar);
-    const ownerRepo = obtenerOwnerRepo(dependencias.ejecutar);
+    const todasLasRamas = dependencias.repositorio.ramasConFecha();
+    const todosLosPRs = dependencias.repositorio.prs();
+    const ownerRepo = dependencias.repositorio.ownerRepo();
 
     const filas = documentosValidos.map((documento) =>
         descriptor.construirFila({
@@ -360,7 +351,7 @@ export async function sincronizarEntidad<
             todasLasRamas,
             todosLosPRs,
             fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
-            fechaDocumento: obtenerFechaDocumento(dependencias.ejecutar, `${descriptor.carpeta}/${documento.slug}.md`),
+            fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
             hoy,
             ownerRepo,
             idioma,
@@ -385,8 +376,7 @@ export async function sincronizarEntidad<
         return resumen;
     }
 
-    const dormir = dependencias.dormir ?? dormirPorDefecto;
-    const cliente = crearClienteNotion(dependencias.fetchInyectado, credenciales.token, dormir);
+    const cliente = dependencias.crearClienteNotion(credenciales.token);
 
     const dataSourceId = await cliente.obtenerDataSourceId(credenciales.databaseId);
     const esquemaActual = await cliente.obtenerEsquema(dataSourceId);

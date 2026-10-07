@@ -10,7 +10,9 @@
  */
 import { type FetchInyectado } from '../../src/ports/notion';
 import { type EjecutarComando } from '../../src/ports/sincronizar';
-import { sincronizar, sincronizarEntidad } from '../../src/app/sincronizar';
+import { sincronizar, sincronizarEntidad } from '../helpers/sincronizar-compuesto';
+import * as app from '../../src/app/sincronizar';
+import { type RepositorioGit } from '../../src/ports/sincronizar';
 import { crearDescriptorFeature } from '../../src/core/entities/feature';
 import {
     conBoardLanguage,
@@ -935,5 +937,44 @@ describe('sincronizarEntidad', () => {
             },
         );
         expect(resumen.entidad).toBe('feature');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// La app solo habla con puertos
+// ---------------------------------------------------------------------------
+
+describe('sincronizar — puertos sin adaptadores', () => {
+    test('con puertos falsos (sin git, gh, .env ni Notion reales) arma y muestra las filas en "--dry-run"', async () => {
+        const repositorio: RepositorioGit = {
+            esRepoSuperficial: () => false,
+            fechaCommit: () => null,
+            fechaDocumento: (ruta) => (ruta === 'odd/tasks/feature-x.md' ? '2026-09-01T00:00:00Z' : null),
+            ramasConFecha: () => [],
+            prs: () => [],
+            ownerRepo: () => 'owner/repo',
+        };
+        const crearClienteNotion = jest.fn();
+        const cargarCredenciales = jest.fn(() => null);
+        const lineas: string[] = [];
+
+        const resumen = await app.sincronizar(
+            { dryRun: true },
+            {
+                raizRepo: '/repo',
+                listarDocumentos: () => [{ slug: 'feature-x', contenido: docBase() }],
+                repositorio,
+                configuracion: { cargarCredenciales, leerBoardLanguage: () => undefined },
+                crearClienteNotion,
+                ajustes: { carpetaFeatures: 'odd/tasks', ramaBaseDocumento: 'main' },
+                hoy: new Date('2026-09-21T00:00:00Z'),
+                log: (linea) => lineas.push(linea),
+            },
+        );
+
+        expect(resumen.codigo).toBe(0);
+        expect(cargarCredenciales).toHaveBeenCalledWith('/repo');
+        expect(crearClienteNotion).not.toHaveBeenCalled();
+        expect(lineas.some((linea) => linea.startsWith('feature-x ') && linea.includes('| 20d    |'))).toBe(true);
     });
 });

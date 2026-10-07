@@ -13,9 +13,70 @@
 import { execFileSync } from 'node:child_process';
 
 import { sincronizar } from '../app/sincronizar';
+import type { AjustesProyecto } from '../core/ajustes';
+import type { Idioma } from '../core/i18n';
+import { AJUSTES_PROYECTO, cargarCredenciales, leerBoardLanguage } from '../adapters/config';
 import { listarDocumentosODD } from '../adapters/fs-node';
-import type { FetchInyectado } from '../ports/notion';
-import type { EjecutarComando } from '../ports/sincronizar';
+import { obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
+import {
+    obtenerEsRepoSuperficial,
+    obtenerFechaCommit,
+    obtenerFechaDocumento,
+    obtenerRamasConFecha,
+} from '../adapters/git-cli';
+import { crearClienteNotion, dormirPorDefecto } from '../adapters/notion-http';
+import type { Credenciales, Dormir, FetchInyectado } from '../ports/notion';
+import type { DependenciasSincronizar, EjecutarComando } from '../ports/sincronizar';
+
+// ---------------------------------------------------------------------------
+// Raíz de composición
+// ---------------------------------------------------------------------------
+
+/** Lo mínimo para componer las dependencias reales: el comando (git/gh) y el
+ *  `fetch` inyectables, más los mismos ajustes opcionales que acepta
+ *  `DependenciasSincronizar` (los tests inyectan falsos acá). */
+export interface EntradaComposicion {
+    raizRepo: string;
+    ejecutar: EjecutarComando;
+    fetchInyectado: FetchInyectado;
+    listarDocumentos: (carpeta: string) => Array<{ slug: string; contenido: string }>;
+    /** Por defecto, `dormirPorDefecto` (espera real entre reintentos). */
+    dormir?: Dormir;
+    hoy?: Date;
+    credenciales?: Credenciales | null;
+    log?: (linea: string) => void;
+    idioma?: Idioma;
+    /** Por defecto, `AJUSTES_PROYECTO` (leídos del entorno al cargar
+     *  `adapters/config.ts`). */
+    ajustes?: AjustesProyecto;
+}
+
+/** Conecta los adaptadores reales (git/gh vía `ejecutar`, Notion vía
+ *  `fetchInyectado`, configuración vía `.env`/entorno) con los puertos de la
+ *  orquestación. Único lugar donde la app y los adaptadores se encuentran. */
+export function componerDependencias(entrada: EntradaComposicion): DependenciasSincronizar {
+    const { ejecutar, fetchInyectado } = entrada;
+    const dormir = entrada.dormir ?? dormirPorDefecto;
+    return {
+        raizRepo: entrada.raizRepo,
+        listarDocumentos: entrada.listarDocumentos,
+        repositorio: {
+            esRepoSuperficial: () => obtenerEsRepoSuperficial(ejecutar),
+            fechaCommit: (sha) => obtenerFechaCommit(ejecutar, sha),
+            fechaDocumento: (rutaRelativa) => obtenerFechaDocumento(ejecutar, rutaRelativa),
+            ramasConFecha: () => obtenerRamasConFecha(ejecutar),
+            prs: () => obtenerPRs(ejecutar),
+            ownerRepo: () => obtenerOwnerRepo(ejecutar),
+        },
+        configuracion: { cargarCredenciales, leerBoardLanguage },
+        crearClienteNotion: (token) => crearClienteNotion(fetchInyectado, token, dormir),
+        ajustes: entrada.ajustes ?? AJUSTES_PROYECTO,
+        hoy: entrada.hoy,
+        credenciales: entrada.credenciales,
+        log: entrada.log,
+        idioma: entrada.idioma,
+    };
+}
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -63,13 +124,13 @@ function principal(argumentos: string[]): void {
 
     sincronizar(
         { dryRun },
-        {
+        componerDependencias({
             raizRepo,
             ejecutar,
             fetchInyectado,
             listarDocumentos: (carpeta) => listarDocumentosODD(raizRepo, carpeta),
             log: (linea) => console.log(linea),
-        },
+        }),
     )
         .then((resumen) => {
             // El resumen final (contadores o el aviso de "no calculado", más
