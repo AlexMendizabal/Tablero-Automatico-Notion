@@ -9,8 +9,7 @@
  * no puede volver estos tests rojos por accidente.
  */
 import { resolverIdiomaTablero } from '../../src/core/i18n';
-import { construirFila } from '../../src/core/row';
-import { construirPropiedadesNotion, validarEsquema } from '../../src/core/schema';
+import { construirFila, construirPropiedadesNotion, validarEsquema } from '../../src/core/entities/feature';
 import { ESQUEMA_CORRECTO_NOTION, ESQUEMA_CORRECTO_NOTION_EN, filaBase, tarea } from '../helpers/fixtures';
 
 import '../helpers/aislar-board-language';

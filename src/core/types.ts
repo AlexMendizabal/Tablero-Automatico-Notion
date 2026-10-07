@@ -1,8 +1,8 @@
 /**
  * Tipos compartidos del núcleo puro.
  */
-import type { Idioma, TEXTOS_POR_IDIOMA } from './i18n';
-import type { ClavePropiedad } from './schema';
+import type { ClavePropiedad, TEXTOS_POR_IDIOMA } from './entities/feature';
+import type { Idioma } from './i18n';
 
 // ---------------------------------------------------------------------------
 // Tipos del núcleo puro

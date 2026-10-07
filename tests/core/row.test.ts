@@ -8,7 +8,7 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { construirFila, formatearFilaLegible } from '../../src/core/row';
+import { construirFila, formatearFilaLegible } from '../../src/core/entities/feature';
 import { type DocumentoODD } from '../../src/core/types';
 import { filaBase, tarea } from '../helpers/fixtures';
 

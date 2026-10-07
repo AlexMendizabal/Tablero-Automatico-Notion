@@ -24,3 +24,12 @@ export const CARPETA_TAREAS = process.env.TABLERO_CARPETA ?? 'odd/tasks';
  *  Normalmente es la rama por defecto del repositorio. Variable de entorno:
  *  `TABLERO_RAMA_BASE`. */
 export const RAMA_BASE_DOCUMENTO = process.env.TABLERO_RAMA_BASE ?? 'main';
+
+/** Ajustes por proyecto ya resueltos, tal como los recibe un descriptor de
+ *  entidad (ver `crearDescriptorFeature`). */
+export interface AjustesProyecto {
+    /** Carpeta de los documentos de Features (`CARPETA_TAREAS`). */
+    carpetaFeatures: string;
+    /** Rama base del enlace "Documento" (`RAMA_BASE_DOCUMENTO`). */
+    ramaBaseDocumento: string;
+}

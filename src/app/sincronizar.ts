@@ -7,8 +7,15 @@ import { type ResultadoIdioma, resolverIdiomaTablero } from '../core/i18n';
 import { normalizarIdBaseNotion } from '../core/id-notion';
 import { parsearDocumento } from '../core/parse';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
-import { construirFila, formatearFilaLegible } from '../core/row';
-import { construirValoresPropiedades, traducirPropiedades, validarEsquema } from '../core/schema';
+import {
+    construirFila,
+    construirValoresPropiedades,
+    ESQUEMA_FEATURE,
+    formatearFilaLegible,
+    traducirPropiedades,
+    validarEsquema,
+} from '../core/entities/feature';
+import { extraerPaginaExistente } from '../core/schema';
 import type { DocumentoODD, DuplicadoSlug } from '../core/types';
 import { cargarCredenciales, leerBoardLanguage } from '../adapters/config';
 import { obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
@@ -18,7 +25,7 @@ import {
     obtenerFechaDocumento,
     obtenerRamasConFecha,
 } from '../adapters/git-cli';
-import { crearClienteNotion, dormirPorDefecto, extraerPaginaExistente } from '../adapters/notion-http';
+import { crearClienteNotion, dormirPorDefecto } from '../adapters/notion-http';
 import type { DependenciasSincronizar } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
@@ -375,7 +382,9 @@ export async function sincronizar(
     }
 
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
-    const paginasExistentesCrudas = paginasNotion.map((pagina) => extraerPaginaExistente(pagina, idioma));
+    const paginasExistentesCrudas = paginasNotion.map((pagina) =>
+        extraerPaginaExistente(ESQUEMA_FEATURE, pagina, idioma),
+    );
     // Una revisión anterior detectó esto: los slugs duplicados en Notion se
     // informan (nunca se borran, nunca se sobrescriben en silencio como hacía el Map anterior).
     const { unicas: paginasExistentes, duplicadas } = resolverDuplicadosPorSlug(paginasExistentesCrudas);

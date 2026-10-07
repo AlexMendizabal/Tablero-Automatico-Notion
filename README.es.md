@@ -116,8 +116,8 @@ npm ci
    | Huella | Fingerprint | Text (rich text) | Huella de la lista de tareas |
 
    Si alguna de estas columnas se renombra o cambia de tipo en Notion, hay
-   que actualizar también el diccionario `TEXTOS_POR_IDIOMA` (nombres, en
-   `src/core/i18n.ts`) o `TIPOS_PROPIEDAD` (tipos, en `src/core/schema.ts`).
+   que actualizar también el diccionario `TEXTOS_POR_IDIOMA` (nombres) o
+   `TIPOS_PROPIEDAD` (tipos), los dos en `src/core/entities/feature.ts`.
    Los dos lados del contrato viven ahí y en Notion, y ninguno se puede
    descubrir del otro automáticamente.
 4. Compartir la base con la integración: abrir la base, entrar al menú `•••`
