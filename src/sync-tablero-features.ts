@@ -11,7 +11,6 @@
  *   npx tsx src/sync-tablero-features.ts [--dry-run]
  */
 import { execFileSync } from 'node:child_process';
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -22,6 +21,8 @@ import { mensajeDeError } from './core/errores';
 import { type Idioma, type ResultadoIdioma, TEXTOS_POR_IDIOMA, resolverIdiomaTablero } from './core/i18n';
 import { normalizarIdBaseNotion } from './core/id-notion';
 import { parsearDocumento } from './core/parse';
+import { planificarSync, resolverDuplicadosPorSlug } from './core/plan';
+import { construirFila, formatearFilaLegible, recortarParaNotion } from './core/row';
 import { construirValoresPropiedades, traducirPropiedades, validarEsquema } from './core/schema';
 import { calcularActualizado, coincideRama, derivarEstado, diasSinActividad } from './core/status';
 import type {
@@ -50,6 +51,8 @@ export * from './core/errores';
 export * from './core/i18n';
 export * from './core/id-notion';
 export * from './core/parse';
+export * from './core/plan';
+export * from './core/row';
 export * from './core/schema';
 export * from './core/status';
 export * from './core/types';
@@ -92,153 +95,6 @@ export interface ResumenSincronizacion {
      *  imprimían contadores de escritura en cero, indistinguibles de un plan
      *  real sin altas, y se agregó este campo para distinguirlos). */
     razonNoCalculado?: string;
-}
-
-// ---------------------------------------------------------------------------
-// calcularHuella
-// ---------------------------------------------------------------------------
-
-/** sha256 de la lista normalizada de tareas `id|hecha|nombre|descripción`.
- *  Alternar un solo checkbox cambia la huella; el mismo listado la conserva. */
-export function calcularHuella(tareas: TareaDocumento[]): string {
-    const normalizado = tareas.map((t) => `${t.id}|${t.hecha}|${t.nombre}|${t.descripcion}`).join('\n');
-    return crypto.createHash('sha256').update(normalizado, 'utf8').digest('hex');
-}
-
-// ---------------------------------------------------------------------------
-// recortarParaNotion
-// ---------------------------------------------------------------------------
-
-/** Notion limita cada objeto de texto a 2000 caracteres; se deja margen y se
- *  recorta a 1900 con "…" para señalar visualmente el corte. */
-const LIMITE_TEXTO_NOTION = 1900;
-
-export function recortarParaNotion(texto: string): string {
-    if (texto.length <= LIMITE_TEXTO_NOTION) return texto;
-    return texto.slice(0, LIMITE_TEXTO_NOTION - 1) + '…';
-}
-
-// ---------------------------------------------------------------------------
-// construirFila
-// ---------------------------------------------------------------------------
-
-export function construirFila(parametros: ParametrosConstruirFila): FilaTablero {
-    const { documento, todasLasRamas, todosLosPRs, fechasCommits, fechaDocumento, hoy, ownerRepo } = parametros;
-    const idioma = parametros.idioma ?? 'es';
-
-    const ramasQueMatchean = todasLasRamas.filter((r) =>
-        documento.ramas.some((patron) => coincideRama(patron, r.nombre)),
-    );
-    const prsQueMatchean = todosLosPRs.filter((pr) =>
-        documento.ramas.some((patron) => coincideRama(patron, pr.headRefName)),
-    );
-    const prsAbiertos = prsQueMatchean.filter((pr) => pr.state === 'OPEN');
-
-    const actualizado = calcularActualizado({
-        ramasVivas: ramasQueMatchean,
-        prs: prsQueMatchean,
-        fechasCommits,
-        fechaDocumento,
-        hoy,
-    });
-
-    const total = documento.tareas.length;
-    const hechas = documento.tareas.filter((t) => t.hecha).length;
-    const primeraPendiente = documento.tareas.find((t) => !t.hecha);
-    const estado = derivarEstado(documento.tareas, prsAbiertos.length);
-
-    return {
-        feature: recortarParaNotion(documento.titulo),
-        slug: documento.slug,
-        estado,
-        progreso: TEXTOS_POR_IDIOMA[idioma].progreso(hechas, total),
-        pendiente: primeraPendiente
-            ? recortarParaNotion(`${primeraPendiente.id} — ${primeraPendiente.nombre}`)
-            : '',
-        prsAbiertos: recortarParaNotion(
-            prsAbiertos
-                .map((pr) => pr.number)
-                .sort((a, b) => a - b)
-                .map((n) => `#${n}`)
-                .join(', '),
-        ),
-        ramas: recortarParaNotion([...ramasQueMatchean.map((r) => r.nombre)].sort().join(', ')),
-        diasSinActividad: diasSinActividad(actualizado, hoy),
-        actualizado,
-        documento: `https://github.com/${ownerRepo}/blob/${RAMA_BASE_DOCUMENTO}/${CARPETA_TAREAS}/${documento.slug}.md`,
-        huella: calcularHuella(documento.tareas),
-    };
-}
-
-// ---------------------------------------------------------------------------
-// planificarSync
-// ---------------------------------------------------------------------------
-
-/** Upsert por Slug: nunca borra. Una página existente sin fila correspondiente
- *  se reporta en `huerfanas`, no se elimina (decisión del usuario). */
-export function planificarSync(filas: FilaTablero[], paginasExistentes: PaginaExistente[]): PlanSync {
-    const porSlug = new Map(paginasExistentes.map((p) => [p.slug, p]));
-    const slugsDeFilas = new Set(filas.map((f) => f.slug));
-
-    const crear: FilaTablero[] = [];
-    const actualizar: PlanSync['actualizar'] = [];
-
-    for (const fila of filas) {
-        const existente = porSlug.get(fila.slug);
-        if (!existente) {
-            crear.push(fila);
-        } else {
-            actualizar.push({
-                pageId: existente.pageId,
-                fila,
-                reescribirCuerpo: existente.huella !== fila.huella,
-            });
-        }
-    }
-
-    const huerfanas = paginasExistentes.filter((p) => !slugsDeFilas.has(p.slug));
-
-    return { crear, actualizar, huerfanas };
-}
-
-/**
- * Cuando el mismo Slug aparece en más de una página de Notion (el bug ya
- * visto con `module-auth` en la base de fichas: un `Map` clave-única se
- * queda con la última y la otra envejece en silencio), se elige UNA página
- * de forma determinística para actualizar — la de `createdTime` más
- * antiguo; si falta o hay empate, la primera en el orden de la consulta
- * (`Array.prototype.sort` es estable) — y el resto queda listado como
- * "duplicadas". Ninguna se borra nunca: eso es decisión del usuario.
- */
-export function resolverDuplicadosPorSlug(paginasExistentes: PaginaExistente[]): {
-    unicas: PaginaExistente[];
-    duplicadas: DuplicadoSlug[];
-} {
-    const porSlug = new Map<string, PaginaExistente[]>();
-    for (const pagina of paginasExistentes) {
-        const lista = porSlug.get(pagina.slug);
-        if (lista) lista.push(pagina);
-        else porSlug.set(pagina.slug, [pagina]);
-    }
-
-    const unicas: PaginaExistente[] = [];
-    const duplicadas: DuplicadoSlug[] = [];
-
-    for (const [slug, paginas] of porSlug) {
-        if (paginas.length === 1) {
-            unicas.push(paginas[0]);
-            continue;
-        }
-        const ordenadas = [...paginas].sort((a, b) => {
-            const fechaA = a.createdTime ? new Date(a.createdTime).getTime() : Number.POSITIVE_INFINITY;
-            const fechaB = b.createdTime ? new Date(b.createdTime).getTime() : Number.POSITIVE_INFINITY;
-            return fechaA - fechaB;
-        });
-        unicas.push(ordenadas[0]);
-        duplicadas.push({ slug, pageIds: ordenadas.slice(1).map((p) => p.pageId) });
-    }
-
-    return { unicas, duplicadas };
 }
 
 // ---------------------------------------------------------------------------
@@ -825,17 +681,6 @@ function extraerPaginaExistente(
         huella: extraerRichTextPlano(pagina.properties?.[nombres.huella]),
         createdTime: pagina.createdTime,
     };
-}
-
-function formatearFilaLegible(fila: FilaTablero): string {
-    return [
-        fila.slug.padEnd(28),
-        fila.estado.padEnd(14),
-        fila.progreso.padEnd(12),
-        (fila.prsAbiertos || '—').padEnd(16),
-        `${fila.diasSinActividad}d`.padEnd(6),
-        fila.actualizado,
-    ].join(' | ');
 }
 
 /**
