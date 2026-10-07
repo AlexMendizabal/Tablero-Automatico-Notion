@@ -13,7 +13,7 @@ on:
     branches: [main]
     paths:
       - 'odd/tasks/**'
-      - 'src/sync-tablero-features.ts'
+      - 'src/**'
       # Un cambio en el propio pipeline también tiene que pasar por él.
       - '.github/workflows/sync-tablero-notion.yml'
       - 'package.json'
@@ -21,7 +21,7 @@ on:
   pull_request:
     paths:
       - 'odd/tasks/**'
-      - 'src/sync-tablero-features.ts'
+      - 'src/**'
       - '.github/workflows/sync-tablero-notion.yml'
       - 'package.json'
       - 'package-lock.json'

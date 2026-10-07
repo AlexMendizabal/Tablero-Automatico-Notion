@@ -26,8 +26,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "sync": "tsx src/sync-tablero-features.ts",
-    "sync:dry": "tsx src/sync-tablero-features.ts --dry-run",
+    "sync": "tsx src/entrypoints/cli.ts",
+    "sync:dry": "tsx src/entrypoints/cli.ts --dry-run",
     "test": "jest",
     "typecheck": "tsc --noEmit"
   },

@@ -41,7 +41,7 @@ siempre actualizado sin mantenerlo a mano.
 
 ```mermaid
 flowchart LR
-    A["odd/tasks/*.md"] --> C["sync-tablero-features.ts"]
+    A["odd/tasks/*.md"] --> C["src/entrypoints/cli.ts"]
     B["git + gh<br/>(ramas, PRs, fechas)"] --> C
     C -->|"alta o actualización,<br/>nunca borrado"| D[("Base de Notion")]
 ```
@@ -116,10 +116,10 @@ npm ci
    | Huella | Fingerprint | Text (rich text) | Huella de la lista de tareas |
 
    Si alguna de estas columnas se renombra o cambia de tipo en Notion, hay
-   que actualizar también el diccionario `TEXTOS_POR_IDIOMA` (nombres) o
-   `TIPOS_PROPIEDAD` (tipos) en `src/sync-tablero-features.ts`. Los dos lados
-   del contrato viven ahí y en Notion, y ninguno se puede descubrir del otro
-   automáticamente.
+   que actualizar también el diccionario `TEXTOS_POR_IDIOMA` (nombres, en
+   `src/core/i18n.ts`) o `TIPOS_PROPIEDAD` (tipos, en `src/core/schema.ts`).
+   Los dos lados del contrato viven ahí y en Notion, y ninguno se puede
+   descubrir del otro automáticamente.
 4. Compartir la base con la integración: abrir la base, entrar al menú `•••`
    de la esquina superior derecha → **Connections** (Conexiones) → buscar y
    agregar la integración creada en el paso 1. Sin este paso, cualquier
