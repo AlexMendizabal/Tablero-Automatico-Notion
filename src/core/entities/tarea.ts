@@ -20,7 +20,13 @@ import {
     TEXTOS_POR_IDIOMA as TEXTOS_FEATURE,
     TIPOS_PROPIEDAD as TIPOS_PROPIEDAD_FEATURE,
 } from './feature';
-import type { DescriptorEntidad, EsquemaEntidad, ResultadoParseoEntidad, TextosEntidad } from './tipos';
+import type {
+    AvisoDocumento,
+    DescriptorEntidad,
+    EsquemaEntidad,
+    ResultadoParseoEntidad,
+    TextosEntidad,
+} from './tipos';
 
 // ---------------------------------------------------------------------------
 // Documento y fila
@@ -122,13 +128,42 @@ export function formatearFilaLegibleTarea(fila: FilaTarea): string {
 
 export type DescriptorTarea = DescriptorEntidad<ClavePropiedadTarea, Estado, DocumentoTarea, FilaTarea>;
 
+/** Avisos de feature padre inexistente: una tarea cuyo `feature` no es el
+ *  slug de ningún documento de `slugsFeatures` (la carpeta de Features). */
+export function avisosFeaturePadre(
+    documentos: DocumentoTarea[],
+    slugsFeatures: ReadonlySet<string>,
+    carpetaFeatures: string,
+): AvisoDocumento[] {
+    return documentos
+        .filter((documento) => documento.feature !== null && !slugsFeatures.has(documento.feature))
+        .map((documento) => ({
+            slug: documento.slug,
+            mensajes: [
+                `La feature padre "${documento.feature}" no existe: no hay ningún documento "${documento.feature}.md" en "${carpetaFeatures}".`,
+            ],
+        }));
+}
+
 /** Descriptor de Tarea con los ajustes del proyecto (carpeta de Tareas y
- *  rama base del enlace "Documento") ya resueltos por quien lo compone. */
-export function crearDescriptorTarea(ajustes: AjustesProyecto = AJUSTES_POR_DEFECTO): DescriptorTarea {
+ *  rama base del enlace "Documento") ya resueltos por quien lo compone.
+ *  Con `slugsFeatures` (los slugs de los documentos de Features), avisa de
+ *  las tareas cuya feature padre no existe; sin él, no valida el padre. */
+export function crearDescriptorTarea(
+    ajustes: AjustesProyecto = AJUSTES_POR_DEFECTO,
+    slugsFeatures?: ReadonlySet<string>,
+): DescriptorTarea {
     return {
         ...ESQUEMA_TAREA,
         clave: 'tarea',
         carpeta: ajustes.carpetaTareas,
+        variableBaseNotion: 'NOTION_TAREAS_DB_ID',
+        ...(slugsFeatures
+            ? {
+                  avisosDocumentos: (documentos: DocumentoTarea[]) =>
+                      avisosFeaturePadre(documentos, slugsFeatures, ajustes.carpetaFeatures),
+              }
+            : {}),
         parsearDocumento: parsearDocumentoTarea,
         derivarEstado,
         construirFila: (parametros) => {

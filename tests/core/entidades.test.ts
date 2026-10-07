@@ -5,7 +5,7 @@
  * genéricas de esquema (`core/schema.ts`) que lo consumen.
  */
 import { crearDescriptorFeature, ESQUEMA_FEATURE, TIPOS_PROPIEDAD } from '../../src/core/entities/feature';
-import { crearDescriptorTarea } from '../../src/core/entities/tarea';
+import { avisosFeaturePadre, crearDescriptorTarea } from '../../src/core/entities/tarea';
 import type { EsquemaEntidad } from '../../src/core/entities/tipos';
 import {
     esquemaEsperadoEntidad,
@@ -221,5 +221,34 @@ describe('descriptor de Tarea', () => {
         expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila(null)))).toMatch(
             /^tarea-x\s+\| —\s+\| En curso/,
         );
+    });
+});
+
+describe('Tarea — feature padre inexistente (avisosFeaturePadre)', () => {
+    const doc = (slug: string, feature: string | null) => ({ slug, ramas: [], commits: [], titulo: slug, tareas: [], feature });
+
+    test('avisa solo de las tareas cuyo padre no es un documento de Features', () => {
+        const avisos = avisosFeaturePadre(
+            [doc('sin-padre', null), doc('con-padre', 'existe'), doc('huerfana', 'no-existe')],
+            new Set(['existe']),
+            'odd/tasks',
+        );
+        expect(avisos).toEqual([
+            {
+                slug: 'huerfana',
+                mensajes: ['La feature padre "no-existe" no existe: no hay ningún documento "no-existe.md" en "odd/tasks".'],
+            },
+        ]);
+    });
+
+    test('el descriptor valida el padre solo si recibe los slugs de Features', () => {
+        expect(crearDescriptorTarea().avisosDocumentos).toBeUndefined();
+        const descriptor = crearDescriptorTarea(undefined, new Set(['existe']));
+        expect(descriptor.avisosDocumentos?.([doc('t', 'otra')])).toHaveLength(1);
+    });
+
+    test('cada descriptor nombra la variable de su base de Notion', () => {
+        expect(crearDescriptorFeature().variableBaseNotion).toBe('NOTION_TABLERO_DB_ID');
+        expect(crearDescriptorTarea().variableBaseNotion).toBe('NOTION_TAREAS_DB_ID');
     });
 });

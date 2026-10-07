@@ -265,6 +265,7 @@ export function crearDescriptorFeature(ajustes: AjustesProyecto = AJUSTES_POR_DE
         ...ESQUEMA_FEATURE,
         clave: 'feature',
         carpeta: ajustes.carpetaFeatures,
+        variableBaseNotion: 'NOTION_TABLERO_DB_ID',
         parsearDocumento,
         derivarEstado,
         construirFila: (parametros) => construirFila(parametros, ajustes),
