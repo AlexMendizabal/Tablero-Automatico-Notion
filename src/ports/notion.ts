@@ -13,7 +13,11 @@ export type Dormir = (ms: number) => Promise<void>;
 
 export interface Credenciales {
     token: string;
+    /** Base de Features (`NOTION_TABLERO_DB_ID`). */
     databaseId: string;
+    /** Base de Tareas (`NOTION_TAREAS_DB_ID`), opcional: ausente → la
+     *  entidad Tarea no se escribe en Notion. */
+    databaseIdTareas?: string;
 }
 
 export interface ClienteNotion {

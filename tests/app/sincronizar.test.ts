@@ -905,7 +905,7 @@ describe('sincronizarEntidad', () => {
         const lineas: string[] = [];
 
         const resumen = await sincronizarEntidad(
-            crearDescriptorFeature({ carpetaFeatures: 'docs/features', ramaBaseDocumento: 'main' }),
+            crearDescriptorFeature({ carpetaFeatures: 'docs/features', carpetaTareas: 'odd/tareas', ramaBaseDocumento: 'main' }),
             { dryRun: true },
             {
                 raizRepo: '/repo',
@@ -966,7 +966,7 @@ describe('sincronizar — puertos sin adaptadores', () => {
                 repositorio,
                 configuracion: { cargarCredenciales, leerBoardLanguage: () => undefined },
                 crearClienteNotion,
-                ajustes: { carpetaFeatures: 'odd/tasks', ramaBaseDocumento: 'main' },
+                ajustes: { carpetaFeatures: 'odd/tasks', carpetaTareas: 'odd/tareas', ramaBaseDocumento: 'main' },
                 hoy: new Date('2026-09-21T00:00:00Z'),
                 log: (linea) => lineas.push(linea),
             },

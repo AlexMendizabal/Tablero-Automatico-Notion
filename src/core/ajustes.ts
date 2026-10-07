@@ -1,5 +1,5 @@
 /**
- * Ajustes por proyecto (carpeta de documentos y rama base del enlace
+ * Ajustes por proyecto (carpetas de documentos y rama base del enlace
  * "Documento"). El núcleo NO lee el entorno: recibe los valores ya resueltos
  * (`AjustesProyecto`). Quien los lee de las variables de entorno es
  * `adapters/config.ts` (`AJUSTES_PROYECTO`), con `resolverAjustesProyecto`.
@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 // === Ajustes por proyecto ===
 //
-// Estos dos valores son los únicos que hace falta tocar para adaptar este
+// Estos valores son los únicos que hace falta tocar para adaptar este
 // script a un repositorio distinto del que sirvió de plantilla. Cada uno se
 // puede fijar por variable de entorno (documentada en el README y en
 // `.env.example`) o dejar en su valor por defecto.
@@ -21,6 +21,11 @@ export interface AjustesProyecto {
      *  documentos ODD de Features (`<carpeta>/*.md`). Variable de entorno:
      *  `TABLERO_CARPETA`. */
     carpetaFeatures: string;
+    /** Carpeta (relativa a la raíz del repositorio) donde viven los
+     *  documentos de Tareas (`<carpeta>/*.md`). Opcional en el repositorio:
+     *  si la carpeta no existe o no tiene documentos, la entidad Tarea no
+     *  hace nada. Variable de entorno: `TABLERO_CARPETA_TAREAS`. */
+    carpetaTareas: string;
     /** Rama base que arma el enlace "Documento" de cada fila del tablero:
      *  `https://github.com/<owner>/<repo>/blob/<esta rama>/<carpeta>/<slug>.md`.
      *  Normalmente es la rama por defecto del repositorio. Variable de
@@ -31,6 +36,7 @@ export interface AjustesProyecto {
 /** Valores cuando la variable de entorno correspondiente no está definida. */
 export const AJUSTES_POR_DEFECTO: AjustesProyecto = {
     carpetaFeatures: 'odd/tasks',
+    carpetaTareas: 'odd/tareas',
     ramaBaseDocumento: 'main',
 };
 
@@ -40,6 +46,7 @@ export const AJUSTES_POR_DEFECTO: AjustesProyecto = {
 export function resolverAjustesProyecto(entorno: Readonly<Record<string, string | undefined>>): AjustesProyecto {
     return {
         carpetaFeatures: entorno.TABLERO_CARPETA ?? AJUSTES_POR_DEFECTO.carpetaFeatures,
+        carpetaTareas: entorno.TABLERO_CARPETA_TAREAS ?? AJUSTES_POR_DEFECTO.carpetaTareas,
         ramaBaseDocumento: entorno.TABLERO_RAMA_BASE ?? AJUSTES_POR_DEFECTO.ramaBaseDocumento,
     };
 }

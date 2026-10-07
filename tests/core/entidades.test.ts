@@ -64,7 +64,7 @@ describe('propiedades de Notion (propiedadesDeNotion)', () => {
 
 describe('descriptor de Feature', () => {
     test('expone el esquema de siempre, sin propiedades de Notion', () => {
-        const descriptor = crearDescriptorFeature({ carpetaFeatures: 'odd/tasks', ramaBaseDocumento: 'main' });
+        const descriptor = crearDescriptorFeature({ carpetaFeatures: 'odd/tasks', carpetaTareas: 'odd/tareas', ramaBaseDocumento: 'main' });
 
         expect(descriptor.clave).toBe('feature');
         expect(descriptor.carpeta).toBe('odd/tasks');
@@ -85,7 +85,11 @@ describe('descriptor de Feature', () => {
     });
 
     test('arma el enlace "Documento" con la carpeta y la rama base recibidas', () => {
-        const descriptor = crearDescriptorFeature({ carpetaFeatures: 'docs/features', ramaBaseDocumento: 'develop' });
+        const descriptor = crearDescriptorFeature({
+            carpetaFeatures: 'docs/features',
+            carpetaTareas: 'docs/tareas',
+            ramaBaseDocumento: 'develop',
+        });
         const fila = descriptor.construirFila({
             documento: { slug: 'x', ramas: [], commits: [], titulo: 'X', tareas: [] },
             todasLasRamas: [],
