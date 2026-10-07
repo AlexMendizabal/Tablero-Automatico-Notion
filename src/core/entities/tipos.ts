@@ -113,4 +113,8 @@ export interface DescriptorEntidad<
      *  documento se sincroniza igual y el código de salida no cambia), ej.
      *  una feature padre inexistente. Opcional: sin él, no hay avisos. */
     avisosDocumentos?(documentos: D[]): AvisoDocumento[];
+    /** Líneas extra del plan de "--dry-run" con credenciales (se imprimen
+     *  después de su encabezado), ej. a qué página apuntaría una relación.
+     *  Opcional: sin él, el plan es solo el de los contadores. */
+    detallePlan?(filas: F[]): string[];
 }

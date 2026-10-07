@@ -7,7 +7,7 @@ import { mensajeDeError } from '../core/errores';
 import { type ResultadoIdioma, resolverIdiomaTablero } from '../core/i18n';
 import { normalizarIdBaseNotion } from '../core/id-notion';
 import { crearDescriptorFeature } from '../core/entities/feature';
-import { crearDescriptorTarea } from '../core/entities/tarea';
+import { crearDescriptorTarea, type RelacionFeatures } from '../core/entities/tarea';
 import type { AvisoDocumento, DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
 import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
@@ -61,6 +61,15 @@ export interface ResumenSincronizacion {
      *  resolver. No se imprime: `sincronizar` lo usa para validar que la
      *  relación "Feature" de las Tareas apunte a la base de Features. */
     dataSourceId?: string;
+    /** Slug → id de página de la base de la entidad, presente solo si se
+     *  llegaron a listar sus páginas: las existentes (una por slug, ver
+     *  `resolverDuplicadosPorSlug`) y, en una corrida real, también las
+     *  recién creadas. No se imprime: las Tareas lo usan para resolver su
+     *  relación "Feature". */
+    paginasPorSlug?: ReadonlyMap<string, string>;
+    /** Solo en "--dry-run" con credenciales: slugs de las páginas que se
+     *  crearían (todavía sin id). */
+    slugsPorCrear?: string[];
 }
 
 /** Resumen de `sincronizar`: el de Features (los mismos campos de siempre),
@@ -207,6 +216,11 @@ function separarHuella<C extends string>(
 const MENSAJE_SIN_BASE_TAREAS =
     'NOTION_TAREAS_DB_ID no está definido: se omite la sincronización de Tareas con Notion.';
 
+/** Línea informativa cuando Features no terminó (error de entorno, de
+ *  configuración o de esquema) y las Tareas no pueden escribir su relación. */
+const MENSAJE_FEATURES_INCOMPLETA =
+    'La sincronización de Features no terminó: se omite la sincronización de Tareas con Notion (su relación "Feature" quedaría incompleta).';
+
 /**
  * Sincroniza las Features y, después, las Tareas, cada una con
  * `sincronizarEntidad` y su propia base de Notion. Reglas de las Tareas:
@@ -220,6 +234,12 @@ const MENSAJE_SIN_BASE_TAREAS =
  *   formato da código 1; los avisos se imprimen).
  * - Sin credenciales y sin "--dry-run": se saltean en silencio (Features ya
  *   informó la falta de credenciales, con código 1).
+ * - Si Features no llegó a listar sus páginas (error de entorno, de
+ *   configuración o de esquema), las Tareas se validan pero no tocan Notion,
+ *   con una línea informativa; el código de salida es el de Features.
+ * - Cada Tarea escribe su relación "Feature" con la página de su feature
+ *   padre (las de `paginasPorSlug` de Features), o vacía si no tiene padre o
+ *   su padre no tiene página (esto último, con un aviso).
  * - Una tarea cuya feature padre no existe genera un aviso, no un error.
  *
  * El código de salida es distinto de 0 si cualquiera de las dos falló.
@@ -265,7 +285,17 @@ export async function sincronizar(
     // Sin la lista de documentos de Features (carpeta ilegible) no se puede
     // validar la feature padre: no se avisa nada en vez de avisar de todas.
     const slugsFeatures = features.slugsDocumentos ? new Set(features.slugsDocumentos) : undefined;
-    const descriptorTarea = crearDescriptorTarea(dependencias.ajustes, slugsFeatures);
+
+    // Las Tareas tocan Notion solo si tienen base y si Features terminó: sin
+    // la lista de páginas de Features, su relación "Feature" se escribiría
+    // vacía (o se borraría) con información incompleta.
+    const sinBaseTareas = credenciales !== null && !credenciales.databaseIdTareas;
+    const featuresIncompleta = credenciales !== null && !sinBaseTareas && !features.paginasPorSlug;
+    const relacion: RelacionFeatures | undefined =
+        features.paginasPorSlug && !sinBaseTareas
+            ? { paginas: features.paginasPorSlug, porCrear: new Set(features.slugsPorCrear ?? []) }
+            : undefined;
+    const descriptorTarea = crearDescriptorTarea(dependencias.ajustes, slugsFeatures, relacion);
 
     let documentosTareas: Array<{ slug: string; contenido: string }>;
     try {
@@ -280,10 +310,10 @@ export async function sincronizar(
 
     log('');
     log('Tareas:');
-    // Sin base de Tareas, sus documentos se validan igual (errores de
+    // En los dos casos, sus documentos se validan igual (errores de
     // formato, avisos de feature padre): solo se omite Notion.
-    const sinBaseTareas = credenciales !== null && !credenciales.databaseIdTareas;
     if (sinBaseTareas) log(MENSAJE_SIN_BASE_TAREAS);
+    else if (featuresIncompleta) log(MENSAJE_FEATURES_INCOMPLETA);
 
     const tareas = await sincronizarEntidad(
         descriptorTarea,
@@ -298,7 +328,7 @@ export async function sincronizar(
                     : null,
         },
         {
-            omitirNotion: sinBaseTareas,
+            omitirNotion: sinBaseTareas || featuresIncompleta,
             ...(features.dataSourceId ? { destinosRelacion: { feature: features.dataSourceId } } : {}),
         },
     );
@@ -590,9 +620,14 @@ export async function sincronizarEntidad<
     const { unicas: paginasExistentes, duplicadas } = resolverDuplicadosPorSlug(paginasExistentesCrudas);
     const plan = planificarSync(filas, paginasExistentes);
     const hayProblemasNoFormato = duplicadas.length > 0;
+    // Slug → página: las existentes ahora; las creadas se suman al crearlas.
+    const paginasPorSlug = new Map(
+        paginasExistentes.filter((p) => p.slug !== '').map((p) => [p.slug, p.pageId] as const),
+    );
 
     if (opciones.dryRun) {
         log('--dry-run con credenciales: se consultó Notion en modo lectura; no se escribió nada.');
+        for (const linea of descriptor.detallePlan?.(filas) ?? []) log(linea);
         const cuerposNuevos = plan.actualizar.filter((a) => a.reescribirCuerpo).length;
         const resumen: ResumenSincronizacion = {
             entidad,
@@ -610,6 +645,8 @@ export async function sincronizarEntidad<
             },
             duplicadas,
             dataSourceId,
+            paginasPorSlug,
+            slugsPorCrear: plan.crear.map((fila) => fila.slug),
         };
         return cerrar(resumen);
     }
@@ -633,6 +670,7 @@ export async function sincronizarEntidad<
             documento.tareas,
         );
         await cliente.actualizarPropiedades(pageId, traducirPropiedadesEntidad(descriptor, huella, idioma));
+        paginasPorSlug.set(fila.slug, pageId);
     }
 
     let cuerposReescritos = 0;
@@ -665,6 +703,7 @@ export async function sincronizarEntidad<
         consultoNotion: true,
         duplicadas,
         dataSourceId,
+        paginasPorSlug,
     };
     return cerrar(resumen);
 }

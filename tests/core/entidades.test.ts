@@ -212,7 +212,7 @@ describe('descriptor de Tarea', () => {
         expect(fila).not.toHaveProperty('feature');
     });
 
-    test('sus propiedades viajan a Notion, salvo "Responsable" (nunca) y la relación (todavía)', () => {
+    test('sus propiedades viajan a Notion, salvo "Responsable" (nunca) y, sin páginas de Features, la relación', () => {
         const descriptor = crearDescriptorTarea();
         const fila = descriptor.construirFila(parametrosFila('padre'));
 
@@ -225,6 +225,25 @@ describe('descriptor de Tarea', () => {
         expect(es.Tarea).toEqual({ title: [{ type: 'text', text: { content: 'Tarea X' } }] });
         expect(en.Status).toEqual({ select: { name: 'In progress' } });
         expect(JSON.stringify(es)).not.toContain('padre');
+    });
+
+    test('con las páginas de Features, la relación viaja a Notion; "Responsable" nunca', () => {
+        const descriptor = crearDescriptorTarea(undefined, undefined, { paginas: new Map([['padre', 'page-padre']]) });
+        const fila = descriptor.construirFila(parametrosFila('padre'));
+
+        const es = traducirPropiedadesEntidad(descriptor, descriptor.construirValoresPropiedades(fila, 'es'), 'es');
+        const en = traducirPropiedadesEntidad(
+            descriptor,
+            { ...descriptor.construirValoresPropiedades(fila, 'en'), responsable: { people: [{ id: 'alguien' }] } },
+            'en',
+        );
+
+        expect(es.Feature).toEqual({ relation: [{ id: 'page-padre' }] });
+        expect(Object.keys(es)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_TAREAS).filter((n) => n !== 'Responsable'));
+        expect(en).not.toHaveProperty('Assignee');
+        expect(descriptor.construirValoresPropiedades(descriptor.construirFila(parametrosFila(null)), 'es').feature).toEqual({
+            relation: [],
+        });
     });
 
     test('la forma legible muestra el slug de la feature padre, o "—" si no tiene', () => {

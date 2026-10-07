@@ -561,7 +561,7 @@ describe('sincronizar — corrida real con Features y Tareas', () => {
         const [paginaTarea] = [...tareas.paginas.values()];
         expect(paginaFeature.properties.Feature).toEqual({ title: [{ type: 'text', text: { content: 'Feature X' } }] });
         expect(paginaTarea.properties.Tarea).toEqual({ title: [{ type: 'text', text: { content: 'Tarea X' } }] });
-        expect(paginaTarea.properties).not.toHaveProperty('Feature');
+        expect(paginaTarea.properties.Feature).toEqual({ relation: [{ id: paginaFeature.id }] });
         expect(paginaTarea.properties.Documento).toEqual({
             url: 'https://github.com/owner/repo/blob/main/odd/tareas/tarea-x.md',
         });
