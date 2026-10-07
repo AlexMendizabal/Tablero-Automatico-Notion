@@ -1,5 +1,5 @@
 ---
-ramas: ["refactor/modular-core", "feat/task-entity*", "feat/contribuyentes*", "release/v2*"]
+ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity*", "feat/contribuyentes*", "release/v2*"]
 ---
 
 # Tareas avanzadas y núcleo modular
@@ -28,7 +28,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 ## Entrega
 
 - Estrategia: PRs encadenados (1a, 1b, 2, 3, 4, 5), apilados: el PR 1a contra main y cada PR siguiente sobre la rama del anterior.
-- PR 1a: #8 (refactor/modular-core → main), commits bf8470d..7636df7.
+- PR 1a: #8 (refactor/modular-core → main), mergeado en 1e85a6c.
+- PR 1b: rama refactor/entity-descriptor desde main.
 
 ## Progreso
 
@@ -38,4 +39,4 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 
 ## Próximo paso
 
-- Revisión y merge del PR #8; T2 (descriptor de entidades) en una rama apilada sobre refactor/modular-core.
+- T2 (descriptor de entidades + seguimientos de T1) en refactor/entity-descriptor; ruta delegada (escritor único, varios archivos no triviales).
