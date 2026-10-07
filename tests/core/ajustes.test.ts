@@ -8,8 +8,13 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { cargarCredenciales } from '../../src/adapters/config';
-import { AJUSTES_POR_DEFECTO, resolverAjustesProyecto, validarAjustesProyecto } from '../../src/core/ajustes';
+import { cargarCredenciales, rutasSensiblesAMayusculas } from '../../src/adapters/config';
+import {
+    AJUSTES_POR_DEFECTO,
+    normalizarCarpeta,
+    resolverAjustesProyecto,
+    validarAjustesProyecto,
+} from '../../src/core/ajustes';
 
 describe('resolverAjustesProyecto', () => {
     test('sin variables, los valores por defecto', () => {
@@ -119,6 +124,7 @@ describe('AJUSTES_PROYECTO (adapters/config.ts)', () => {
                 carpetaFeatures: 'carpeta/al-cargar',
                 carpetaTareas: 'tareas/al-cargar',
                 ramaBaseDocumento: 'main',
+                rutasSensiblesAMayusculas: rutasSensiblesAMayusculas(process.platform),
             });
         });
     });
@@ -174,5 +180,91 @@ describe('cargarCredenciales (adapters/config.ts)', () => {
         process.env.NOTION_TAREAS_DB_ID = 'base-tareas';
 
         expect(cargarCredenciales(raizSinEnv)).toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Comparación de carpetas: mayúsculas, "..", rutas absolutas
+// ---------------------------------------------------------------------------
+
+describe('normalizarCarpeta', () => {
+    test.each([
+        ['odd/tasks/../tareas', 'odd/tareas'],
+        ['./odd/./tareas/', 'odd/tareas'],
+        ['odd/tareas/..', 'odd'],
+        ['../afuera', '../afuera'],
+        ['a/../../afuera', '../afuera'],
+        ['a/..', ''],
+    ])('resuelve los segmentos "." y "..": "%s" → "%s"', (carpeta, esperada) => {
+        expect(normalizarCarpeta(carpeta)).toBe(esperada);
+    });
+
+    test('sin distinguir mayúsculas, solo si se pide', () => {
+        expect(normalizarCarpeta('Odd/Tareas')).toBe('Odd/Tareas');
+        expect(normalizarCarpeta('Odd/Tareas', { sensibleAMayusculas: false })).toBe('odd/tareas');
+    });
+
+    test.each([
+        ['/repo/odd/tareas', '/repo', 'odd/tareas'],
+        ['/repo/odd/../odd/tareas/', '/repo/', 'odd/tareas'],
+        ['C:\\Proyectos\\x\\odd\\tasks', 'C:\\Proyectos\\x', 'odd/tasks'],
+        ['/repo', '/repo', ''],
+    ])('una ruta absoluta dentro de la raíz se compara como relativa: "%s" (raíz "%s")', (carpeta, raizRepo, esperada) => {
+        expect(normalizarCarpeta(carpeta, { raizRepo })).toBe(esperada);
+    });
+
+    test('una ruta absoluta fuera de la raíz (o que solo comparte el prefijo) queda absoluta', () => {
+        expect(normalizarCarpeta('/otro/odd', { raizRepo: '/repo' })).toBe('/otro/odd');
+        expect(normalizarCarpeta('/repo-2/odd', { raizRepo: '/repo' })).toBe('/repo-2/odd');
+        expect(normalizarCarpeta('/odd/../..', { raizRepo: '/repo' })).toBe('/');
+    });
+
+    test('en Windows/macOS, la raíz también se compara sin distinguir mayúsculas', () => {
+        expect(normalizarCarpeta('c:/proyectos/X/Odd', { raizRepo: 'C:\\Proyectos\\x', sensibleAMayusculas: false })).toBe('odd');
+    });
+});
+
+describe('validarAjustesProyecto — carpetas equivalentes', () => {
+    const conTareas = (carpetaTareas: string, rutasSensiblesAMayusculas?: boolean) => ({
+        ...AJUSTES_POR_DEFECTO,
+        carpetaTareas,
+        ...(rutasSensiblesAMayusculas === undefined ? {} : { rutasSensiblesAMayusculas }),
+    });
+
+    test('con ".." que llevan a la carpeta de Features, es la misma carpeta', () => {
+        expect(validarAjustesProyecto(conTareas('odd/tareas/../tasks'))).toMatch(/es la misma carpeta que TABLERO_CARPETA/);
+    });
+
+    test('sin distinguir mayúsculas (Windows/macOS), "Odd/Tasks" es la misma carpeta; en POSIX, no', () => {
+        expect(validarAjustesProyecto(conTareas('Odd/Tasks', false))).toMatch(/es la misma carpeta que TABLERO_CARPETA/);
+        expect(validarAjustesProyecto(conTareas('Odd/Tasks', true))).toBeNull();
+        expect(validarAjustesProyecto(conTareas('Odd/Tasks'))).toBeNull();
+    });
+
+    test('una ruta absoluta dentro del repositorio se compara con la relativa', () => {
+        expect(validarAjustesProyecto(conTareas('/repo/odd/tasks'), '/repo')).toMatch(/es la misma carpeta que TABLERO_CARPETA/);
+        expect(validarAjustesProyecto(conTareas('/repo/odd/tasks'))).toBeNull();
+    });
+
+    test('una carpeta que se resuelve a la raíz cuenta como vacía', () => {
+        expect(validarAjustesProyecto(conTareas('/repo'), '/repo')).toMatch(/^TABLERO_CARPETA_TAREAS está vacía/);
+    });
+
+    test('la deshabilitación implícita de Tareas también compara sin distinguir mayúsculas si se pide', () => {
+        expect(resolverAjustesProyecto({ TABLERO_CARPETA: 'Odd/Tareas' }).tareasDeshabilitadas).toBeUndefined();
+        const insensible = resolverAjustesProyecto({ TABLERO_CARPETA: 'Odd/Tareas' }, { sensibleAMayusculas: false });
+        expect(insensible.tareasDeshabilitadas).toBe(true);
+        expect(insensible.rutasSensiblesAMayusculas).toBe(false);
+    });
+});
+
+describe('rutasSensiblesAMayusculas (adapters/config.ts)', () => {
+    test.each([
+        ['linux', true],
+        ['win32', false],
+        ['darwin', false],
+        ['freebsd', true],
+    ])('%s → %s', (plataforma, esperado) => {
+        expect(rutasSensiblesAMayusculas(plataforma)).toBe(esperado);
     });
 });

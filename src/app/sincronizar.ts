@@ -259,7 +259,7 @@ export async function sincronizar(
     const log = dependencias.log ?? (() => {});
     // Carpetas mal configuradas: error de configuración antes de leer nada
     // o de llamar a Notion (ni siquiera se sincronizan las Features).
-    const errorAjustes = validarAjustesProyecto(dependencias.ajustes);
+    const errorAjustes = validarAjustesProyecto(dependencias.ajustes, dependencias.raizRepo);
     if (errorAjustes !== null) {
         log(errorAjustes);
         return {

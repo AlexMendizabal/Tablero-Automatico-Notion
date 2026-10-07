@@ -18,7 +18,15 @@ import type { Credenciales } from '../ports/notion';
  *  un `TABLERO_CARPETA`/`TABLERO_CARPETA_TAREAS`/`TABLERO_RAMA_BASE` que solo viva en el `.env` NO los
  *  afecta, porque el `.env` se carga recién en `cargarCredenciales`, después
  *  de que este módulo ya se evaluó. */
-export const AJUSTES_PROYECTO: AjustesProyecto = resolverAjustesProyecto(process.env);
+export const AJUSTES_PROYECTO: AjustesProyecto = resolverAjustesProyecto(process.env, {
+    sensibleAMayusculas: rutasSensiblesAMayusculas(),
+});
+
+/** `false` en las plataformas cuyo sistema de archivos, por defecto, no
+ *  distingue mayúsculas en las rutas (Windows y macOS). */
+export function rutasSensiblesAMayusculas(plataforma: string = process.platform): boolean {
+    return plataforma !== 'win32' && plataforma !== 'darwin';
+}
 
 // ---------------------------------------------------------------------------
 // Capa de E/S — credenciales
