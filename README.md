@@ -40,7 +40,7 @@ up to date without maintaining it by hand.
 
 ```mermaid
 flowchart LR
-    A["odd/tasks/*.md"] --> C["sync-tablero-features.ts"]
+    A["odd/tasks/*.md"] --> C["src/entrypoints/cli.ts"]
     B["git + gh<br/>(branches, PRs, dates)"] --> C
     C -->|"create or update,<br/>never delete"| D[("Notion database")]
 ```
@@ -114,10 +114,10 @@ npm ci
    | Huella | Fingerprint | Text (rich text) | Fingerprint of the task list |
 
    If any of these columns is renamed or changes type in Notion, the
-   `TEXTOS_POR_IDIOMA` dictionary (names) or `TIPOS_PROPIEDAD` (types) in
-   `src/sync-tablero-features.ts` must be updated too. The two sides of the
-   contract live there and in Notion, and neither can be discovered from the
-   other automatically.
+   `TEXTOS_POR_IDIOMA` dictionary (names, in `src/core/i18n.ts`) or
+   `TIPOS_PROPIEDAD` (types, in `src/core/schema.ts`) must be updated too.
+   The two sides of the contract live there and in Notion, and neither can be
+   discovered from the other automatically.
 4. Share the database with the integration: open the database, open the
    `•••` menu in the top-right corner → **Connections** → find and add the
    integration created in step 1. Without this step, every call from the

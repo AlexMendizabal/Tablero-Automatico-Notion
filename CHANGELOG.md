@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Internal refactor: the single sync script is split into `src/core`,
+  `src/ports`, `src/adapters`, `src/app` and `src/entrypoints` (entry point:
+  `src/entrypoints/cli.ts`), with tests split by layer. No behavior change.
+
 ## [1.1.0] - 2026-10-06
 
 ### Added

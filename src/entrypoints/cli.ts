@@ -8,36 +8,14 @@
  * `import.meta`: Jest transpila a CommonJS).
  *
  * Uso:
- *   npx tsx src/sync-tablero-features.ts [--dry-run]
+ *   npx tsx src/entrypoints/cli.ts [--dry-run]
  */
 import { execFileSync } from 'node:child_process';
 
-import { listarDocumentosODD } from './adapters/fs-node';
-import { sincronizar } from './app/sincronizar';
-import type { FetchInyectado } from './ports/notion';
-import type { EjecutarComando } from './ports/sincronizar';
-
-// Re-exports transitorios: el código ya vive en `src/core`, `src/ports`,
-// `src/adapters` y `src/app`; este archivo mantiene su API pública hasta que
-// el punto de entrada se mude a `src/entrypoints`.
-export * from './adapters/config';
-export * from './adapters/fs-node';
-export * from './adapters/gh-cli';
-export * from './adapters/git-cli';
-export * from './adapters/notion-http';
-export * from './app/sincronizar';
-export * from './core/ajustes';
-export * from './core/errores';
-export * from './core/i18n';
-export * from './core/id-notion';
-export * from './core/parse';
-export * from './core/plan';
-export * from './core/row';
-export * from './core/schema';
-export * from './core/status';
-export * from './core/types';
-export * from './ports/notion';
-export * from './ports/sincronizar';
+import { sincronizar } from '../app/sincronizar';
+import { listarDocumentosODD } from '../adapters/fs-node';
+import type { FetchInyectado } from '../ports/notion';
+import type { EjecutarComando } from '../ports/sincronizar';
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -109,7 +87,7 @@ function principal(argumentos: string[]): void {
  * cuando lo importa un test. Se compara contra `process.argv[1]` en vez de
  * `import.meta.url` porque Jest transpila este archivo a CommonJS.
  */
-const invocadoDirectamente = /sync-tablero-features\.(ts|js|mjs|cjs)$/.test(
+const invocadoDirectamente = /entrypoints\/cli\.(ts|js|mjs|cjs)$/.test(
     (process.argv[1] ?? '').replace(/\\/g, '/'),
 );
 if (invocadoDirectamente) {
