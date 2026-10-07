@@ -156,13 +156,27 @@ describe('descriptor de Tarea', () => {
         expect(descriptor.clave).toBe('tarea');
         expect(descriptor.carpeta).toBe('docs/tareas');
         expect(descriptor.claveTitulo).toBe('tarea');
-        expect(descriptor.propiedadesDeNotion).toEqual([]);
         expect(validarEsquemaEntidad(descriptor, ESQUEMA_CORRECTO_NOTION_TAREAS, 'es')).toEqual([]);
         expect(validarEsquemaEntidad(descriptor, ESQUEMA_CORRECTO_NOTION_TAREAS_EN, 'en')).toEqual([]);
         // Una base de Features (título "Feature") no sirve como base de Tareas.
         expect(validarEsquemaEntidad(descriptor, ESQUEMA_CORRECTO_NOTION)).toEqual([
             { nombre: 'Tarea', motivo: 'faltante', tipoEsperado: 'title' },
+            { nombre: 'Feature', motivo: 'tipo-incorrecto', tipoEsperado: 'relation', tipoActual: 'title' },
+            { nombre: 'Responsable', motivo: 'faltante', tipoEsperado: 'people' },
         ]);
+    });
+
+    test('su base suma "Feature" (relación) y "Responsable"/"Assignee" (people, propiedad de Notion)', () => {
+        const descriptor = crearDescriptorTarea();
+
+        expect(descriptor.tiposPropiedad.feature).toBe('relation');
+        expect(descriptor.tiposPropiedad.responsable).toBe('people');
+        expect(descriptor.propiedadesDeNotion).toEqual(['responsable']);
+        expect(descriptor.textos.es.propiedades).toMatchObject({ feature: 'Feature', responsable: 'Responsable' });
+        expect(descriptor.textos.en.propiedades).toMatchObject({ feature: 'Feature', responsable: 'Assignee' });
+        expect(
+            validarEsquemaEntidad(descriptor, { ...ESQUEMA_CORRECTO_NOTION_TAREAS, Responsable: { type: 'rich_text' } }),
+        ).toEqual([{ nombre: 'Responsable', motivo: 'tipo-incorrecto', tipoEsperado: 'people', tipoActual: 'rich_text' }]);
     });
 
     test('por defecto, la carpeta es "odd/tareas"', () => {
@@ -198,15 +212,16 @@ describe('descriptor de Tarea', () => {
         expect(fila).not.toHaveProperty('feature');
     });
 
-    test('todas sus propiedades viajan a Notion; el padre no es una columna (todavía)', () => {
+    test('sus propiedades viajan a Notion, salvo "Responsable" (nunca) y la relación (todavía)', () => {
         const descriptor = crearDescriptorTarea();
         const fila = descriptor.construirFila(parametrosFila('padre'));
 
         const es = traducirPropiedadesEntidad(descriptor, descriptor.construirValoresPropiedades(fila, 'es'), 'es');
         const en = traducirPropiedadesEntidad(descriptor, descriptor.construirValoresPropiedades(fila, 'en'), 'en');
 
-        expect(Object.keys(es)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_TAREAS));
-        expect(Object.keys(en)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_TAREAS_EN));
+        const sinNotion = (nombre: string) => !['Feature', 'Responsable', 'Assignee'].includes(nombre);
+        expect(Object.keys(es)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_TAREAS).filter(sinNotion));
+        expect(Object.keys(en)).toEqual(Object.keys(ESQUEMA_CORRECTO_NOTION_TAREAS_EN).filter(sinNotion));
         expect(es.Tarea).toEqual({ title: [{ type: 'text', text: { content: 'Tarea X' } }] });
         expect(en.Status).toEqual({ select: { name: 'In progress' } });
         expect(JSON.stringify(es)).not.toContain('padre');
@@ -222,6 +237,46 @@ describe('descriptor de Tarea', () => {
         expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila(null)))).toMatch(
             /^tarea-x\s+\| —\s+\| En curso/,
         );
+    });
+});
+
+describe('validarEsquemaEntidad — destino de una relación', () => {
+    const descriptor = crearDescriptorTarea();
+    const conDestino = (relation: Record<string, string> | undefined) => ({
+        ...ESQUEMA_CORRECTO_NOTION_TAREAS,
+        Feature: { type: 'relation', ...(relation ? { relation } : {}) },
+    });
+
+    test('una relación con el data source esperado es válida (con o sin guiones, en cualquier caja)', () => {
+        const destino = '0123abcd-0000-4000-8000-00000000abcd';
+        const sinGuiones = destino.split('-').join('').toUpperCase();
+        expect(validarEsquemaEntidad(descriptor, conDestino({ data_source_id: destino }), 'es', { feature: destino })).toEqual([]);
+        expect(
+            validarEsquemaEntidad(descriptor, conDestino({ data_source_id: sinGuiones }), 'es', { feature: destino }),
+        ).toEqual([]);
+    });
+
+    test('una relación con otra base es un problema de esquema que nombra los dos destinos', () => {
+        expect(
+            validarEsquemaEntidad(descriptor, conDestino({ data_source_id: 'ds-otra', database_id: 'db-otra' }), 'es', {
+                feature: 'ds-features',
+            }),
+        ).toEqual([
+            {
+                nombre: 'Feature',
+                motivo: 'relacion-incorrecta',
+                tipoEsperado: 'relation',
+                destinoEsperado: 'ds-features',
+                destinoActual: 'ds-otra',
+            },
+        ]);
+        expect(validarEsquemaEntidad(descriptor, conDestino(undefined), 'es', { feature: 'ds-features' })).toEqual([
+            expect.objectContaining({ nombre: 'Feature', motivo: 'relacion-incorrecta', destinoActual: undefined }),
+        ]);
+    });
+
+    test('sin destino esperado, solo se valida el tipo', () => {
+        expect(validarEsquemaEntidad(descriptor, conDestino({ data_source_id: 'ds-otra' }))).toEqual([]);
     });
 });
 

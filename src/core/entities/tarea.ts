@@ -51,24 +51,33 @@ export type FilaTarea = Omit<FilaTablero, 'feature'> & {
 
 /** Las propiedades de Features, con `tarea` como título en vez de `feature`. */
 const { feature: _tituloFeature, ...TIPOS_SIN_TITULO } = TIPOS_PROPIEDAD_FEATURE;
-export const TIPOS_PROPIEDAD_TAREA = { tarea: 'title', ...TIPOS_SIN_TITULO } as const;
+export const TIPOS_PROPIEDAD_TAREA = {
+    tarea: 'title',
+    ...TIPOS_SIN_TITULO,
+    feature: 'relation',
+    responsable: 'people',
+} as const;
 
 export type ClavePropiedadTarea = keyof typeof TIPOS_PROPIEDAD_TAREA;
 
 /** Textos de Features con el título renombrado: los demás nombres visibles,
  *  los estados y el texto de progreso son idénticos. */
-function textosTarea(idioma: Idioma, titulo: string): TextosEntidad<ClavePropiedadTarea, Estado> {
+function textosTarea(
+    idioma: Idioma,
+    titulo: string,
+    responsable: string,
+): TextosEntidad<ClavePropiedadTarea, Estado> {
     const { feature: _titulo, ...propiedades } = TEXTOS_FEATURE[idioma].propiedades;
     return {
-        propiedades: { tarea: titulo, ...propiedades },
+        propiedades: { tarea: titulo, ...propiedades, feature: 'Feature', responsable },
         estados: TEXTOS_FEATURE[idioma].estados,
         progreso: TEXTOS_FEATURE[idioma].progreso,
     };
 }
 
 export const TEXTOS_TAREA_POR_IDIOMA: Readonly<Record<Idioma, TextosEntidad<ClavePropiedadTarea, Estado>>> = {
-    es: textosTarea('es', 'Tarea'),
-    en: textosTarea('en', 'Task'),
+    es: textosTarea('es', 'Tarea', 'Responsable'),
+    en: textosTarea('en', 'Task', 'Assignee'),
 };
 
 /** Parte estática del descriptor de Tarea (no depende de ajustes). */
@@ -77,8 +86,8 @@ export const ESQUEMA_TAREA: EsquemaEntidad<ClavePropiedadTarea, Estado> = {
     claveTitulo: 'tarea',
     claveSlug: 'slug',
     claveHuella: 'huella',
-    // Todavía sin propiedades de Notion (el Responsable llega más adelante).
-    propiedadesDeNotion: [],
+    // El Responsable se asigna a mano en Notion: se valida, nunca se escribe.
+    propiedadesDeNotion: ['responsable'],
     textos: TEXTOS_TAREA_POR_IDIOMA,
 };
 

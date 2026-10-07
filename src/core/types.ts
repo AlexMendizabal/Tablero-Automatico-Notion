@@ -93,11 +93,24 @@ export type PropiedadesNotion<I extends Idioma = 'es'> = {
     [K in ClavePropiedad as (typeof TEXTOS_POR_IDIOMA)[I]['propiedades'][K]]: ValoresPropiedades[K];
 };
 
+/** Una propiedad del esquema de una base de Notion, tal como la devuelve
+ *  "retrieve a data source" (Notion-Version 2025-09-03): su tipo y, si es una
+ *  relación, la base a la que apunta (`relation.data_source_id`). */
+export interface PropiedadEsquemaNotion {
+    type: string;
+    relation?: { data_source_id?: string; database_id?: string };
+}
+
 export interface PropiedadInvalida {
     nombre: string;
-    motivo: 'faltante' | 'tipo-incorrecto';
+    /** `relacion-incorrecta`: el tipo es `relation`, pero apunta a otra base
+     *  (ver `destinoEsperado`/`destinoActual`). */
+    motivo: 'faltante' | 'tipo-incorrecto' | 'relacion-incorrecta';
     tipoEsperado: string;
     tipoActual?: string;
+    /** Data source esperado y real de una relación (`relacion-incorrecta`). */
+    destinoEsperado?: string;
+    destinoActual?: string;
 }
 
 export interface PaginaExistente {

@@ -11,7 +11,7 @@ import { crearDescriptorTarea } from '../core/entities/tarea';
 import type { AvisoDocumento, DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
 import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
-import type { DocumentoODD, DuplicadoSlug } from '../core/types';
+import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida } from '../core/types';
 import type { DependenciasSincronizar } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
@@ -57,6 +57,10 @@ export interface ResumenSincronizacion {
      *  (válidos o no). Ausente si la carpeta no se pudo leer. No se imprime:
      *  `sincronizar` lo usa para validar la feature padre de las Tareas. */
     slugsDocumentos?: string[];
+    /** Data source de la base de Notion de la entidad, cuando se llegó a
+     *  resolver. No se imprime: `sincronizar` lo usa para validar que la
+     *  relación "Feature" de las Tareas apunte a la base de Features. */
+    dataSourceId?: string;
 }
 
 /** Resumen de `sincronizar`: el de Features (los mismos campos de siempre),
@@ -173,6 +177,18 @@ function resumenDeErrorEntorno(
     };
 }
 
+/** Línea del log para un problema del esquema de la base de Notion. */
+function mensajeProblemaEsquema(problema: PropiedadInvalida): string {
+    switch (problema.motivo) {
+        case 'faltante':
+            return `Falta la propiedad "${problema.nombre}" (tipo ${problema.tipoEsperado}) en la base de Notion.`;
+        case 'tipo-incorrecto':
+            return `La propiedad "${problema.nombre}" es de tipo "${problema.tipoActual}", debería ser "${problema.tipoEsperado}".`;
+        case 'relacion-incorrecta':
+            return `La propiedad "${problema.nombre}" es una relación con otra base (data source "${problema.destinoActual ?? 'desconocido'}"): debería apuntar a la base de Features (data source "${problema.destinoEsperado}").`;
+    }
+}
+
 /** Separa la huella del resto de los valores: la huella se escribe siempre
  *  al final, en su propio PATCH (ver "Huella al final" más abajo). */
 function separarHuella<C extends string>(
@@ -281,13 +297,19 @@ export async function sincronizar(
                     ? { token: credenciales.token, databaseId: credenciales.databaseIdTareas }
                     : null,
         },
-        { omitirNotion: sinBaseTareas },
+        {
+            omitirNotion: sinBaseTareas,
+            ...(features.dataSourceId ? { destinosRelacion: { feature: features.dataSourceId } } : {}),
+        },
     );
     return conTareas(tareas);
 }
 
 /** Lo que `sincronizar` le pasa a una entidad además de sus dependencias. */
-export interface ContextoEntidad {
+export interface ContextoEntidad<C extends string = string> {
+    /** Data source al que debe apuntar cada propiedad `relation`, por clave
+     *  interna (ver `validarEsquemaEntidad`). */
+    destinosRelacion?: Partial<Record<C, string>>;
     /** Valida los documentos (parseo, anclas de "commits", filas, avisos)
      *  sin consultar Notion ni exigir credenciales, y cierra con el resumen
      *  de "no se consultó Notion". Lo usan las Tareas cuando no se las puede
@@ -310,7 +332,7 @@ export async function sincronizarEntidad<
     descriptor: DescriptorEntidad<C, E, D, F>,
     opciones: OpcionesCLI,
     dependencias: DependenciasSincronizar,
-    contexto: ContextoEntidad = {},
+    contexto: ContextoEntidad<C> = {},
 ): Promise<ResumenSincronizacion> {
     const entidad = descriptor.clave;
     const log = dependencias.log ?? (() => {});
@@ -528,16 +550,10 @@ export async function sincronizarEntidad<
 
     const dataSourceId = await cliente.obtenerDataSourceId(credenciales.databaseId);
     const esquemaActual = await cliente.obtenerEsquema(dataSourceId);
-    const problemasEsquema = validarEsquemaEntidad(descriptor, esquemaActual, idioma);
+    const problemasEsquema = validarEsquemaEntidad(descriptor, esquemaActual, idioma, contexto.destinosRelacion);
 
     if (problemasEsquema.length > 0) {
-        for (const problema of problemasEsquema) {
-            log(
-                problema.motivo === 'faltante'
-                    ? `Falta la propiedad "${problema.nombre}" (tipo ${problema.tipoEsperado}) en la base de Notion.`
-                    : `La propiedad "${problema.nombre}" es de tipo "${problema.tipoActual}", debería ser "${problema.tipoEsperado}".`,
-            );
-        }
+        for (const problema of problemasEsquema) log(mensajeProblemaEsquema(problema));
         // Una corrección posterior sumó esto: además de decir qué falta,
         // decir qué SÍ hay — el usuario se encontró con 11 avisos de "Falta la propiedad ..." sin ninguna
         // pista de qué tenía la base en realidad (había creado FILAS en vez
@@ -560,6 +576,7 @@ export async function sincronizarEntidad<
             erroresDeFormato,
             consultoNotion: true,
             razonNoCalculado: RAZON_ESQUEMA_INVALIDO,
+            dataSourceId,
         };
         return cerrar(resumen);
     }
@@ -592,6 +609,7 @@ export async function sincronizarEntidad<
                 cuerposAReescribir: cuerposNuevos,
             },
             duplicadas,
+            dataSourceId,
         };
         return cerrar(resumen);
     }
@@ -646,6 +664,7 @@ export async function sincronizarEntidad<
         erroresDeFormato,
         consultoNotion: true,
         duplicadas,
+        dataSourceId,
     };
     return cerrar(resumen);
 }

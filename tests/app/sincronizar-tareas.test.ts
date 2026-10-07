@@ -25,6 +25,8 @@ import {
     crearNotionFalsoTareas,
     docBase,
     ESQUEMA_CORRECTO_NOTION,
+    ESQUEMA_CORRECTO_NOTION_TAREAS,
+    relacionConFeatures,
 } from '../helpers/fixtures';
 import { sincronizar, sincronizarEntidad } from '../helpers/sincronizar-compuesto';
 
@@ -598,6 +600,35 @@ describe('sincronizar — corrida real con Features y Tareas', () => {
         expect(tareas.paginas.size).toBe(0);
         expect(resumen.tareas?.codigo).toBe(1);
         expect(resumen.codigo).toBe(1);
+    });
+
+    test('una relación "Feature" que apunta a otra base es error de esquema de Tareas (no se escribe nada)', async () => {
+        const features = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const tareas = crearNotionFalsoTareas({ ...ESQUEMA_CORRECTO_NOTION_TAREAS, Feature: relacionConFeatures('ds-otra') });
+        const { fetchFalso } = combinarNotionFalsos(features, tareas);
+        const lineas: string[] = [];
+
+        const resumen = await sincronizar(
+            { dryRun: false },
+            {
+                raizRepo: '/repo',
+                ejecutar: ejecutar(),
+                fetchInyectado: fetchFalso,
+                listarDocumentos: documentosFeatures,
+                listarDocumentosTareas: documentosTareas(),
+                credenciales: { token: 'tok', databaseId: features.databaseId, databaseIdTareas: tareas.databaseId },
+                hoy: HOY,
+                log: (l) => lineas.push(l),
+            },
+        );
+
+        expect(resumen.creadas).toBe(1);
+        expect(tareas.paginas.size).toBe(0);
+        expect(resumen.tareas?.razonNoCalculado).toBe('el esquema de la base de Notion no coincide');
+        expect(resumen.codigo).toBe(1);
+        expect(lineas.slice(lineas.indexOf('Tareas:'))).toContain(
+            'La propiedad "Feature" es una relación con otra base (data source "ds-otra"): debería apuntar a la base de Features (data source "ds-fake").',
+        );
     });
 });
 
