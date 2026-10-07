@@ -7,7 +7,7 @@ ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity
 ## Tareas
 
 - [x] **T1 — Separación en módulos sin cambio de comportamiento (PR 1a)**: mover el archivo único a core/ports/adapters/app/entrypoints, dividir los tests por capa y mantener idéntica la salida de sync:dry.
-- [ ] **T2 — Descriptor de entidades (PR 1b)**: llevar esquema, textos, regla de estado y armado de fila a core/entities/feature.ts y orquestar con sincronizarEntidad sin renombrar columnas de Features.
+- [x] **T2 — Descriptor de entidades (PR 1b)**: llevar esquema, textos, regla de estado y armado de fila a core/entities/feature.ts y orquestar con sincronizarEntidad sin renombrar columnas de Features.
 - [ ] **T3 — Entidad Tarea desde el repo (PR 2)**: documentos en odd/tareas/*.md con feature padre opcional y NOTION_TAREAS_DB_ID opcional que saltea la entidad si falta.
 - [ ] **T4 — Esquema de Notion para Tareas (PR 3)**: base de Tareas con relación a Feature, Responsable (people) propiedad de Notion que nunca se escribe y Contribuyentes (multi-select).
 - [ ] **T5 — Contribuyentes desde git y PRs (PR 4)**: autores de ramas, commits ancla del frontmatter, trailers Co-authored-by y autores de PR normalizados con .mailmap.
@@ -35,8 +35,11 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 
 - T1: ruta delegada (escritor único; preparación + varios archivos no triviales). Primera versión en un solo commit (respaldo en backup/modular-core-v1); el revisor nativo la rechazó por exceder su presupuesto de contexto (10494 líneas), así que se re-cortó en 15 commits (bf8470d..0f73c31) con árbol final idéntico. Cada commit pasa typecheck y 159/159 tests; sync:dry idéntico a la línea base salvo la ruta del script.
 - Revisión T1: commit 1 pasivo; commits 2-14 riesgo medio y commit 15 riesgo alto (4 lentes), todos aprobados y confirmados. El commit 12 tuvo un operation_timeout y se completó al reingresar por la misma revisión.
-- Seguimientos para T2 (no bloqueantes): imports sin usar en tests/core/parse.test.ts, tests/adapters/notion-http.test.ts y tests/app/sincronizar.test.ts; el texto de --ayuda todavía menciona src/sync-tablero-features.ts; sin test para formatearFilaLegible ni para la detección de ejecución directa en src/entrypoints/cli.ts; createdTime inválido (NaN) en resolverDuplicadosPorSlug no es determinista (preexistente); CARPETA_TAREAS y RAMA_BASE_DOCUMENTO leen process.env en core/ajustes.ts; app/sincronizar.ts importa adapters directamente.
+- Seguimientos de T1: resueltos en T2 (imports sin usar, --ayuda, test de formatearFilaLegible y de esInvocacionDirecta, NaN en createdTime, process.env fuera de core, app sin imports de adapters).
+- T2: ruta delegada (escritor único). 8 commits 7712b4f..234ca24; tests 159 → 190; typecheck limpio; sync:dry idéntico en las filas comunes (comparado lado a lado con la base). RED observado para el fix de NaN, la exclusión de propiedades de Notion y esInvocacionDirecta.
+- Revisión T2: 3 tramos de riesgo medio (113f4c9..5c5472c, ..db5cd8f, ..234ca24), aprobados y confirmados.
+- Seguimientos para T3 (no bloqueantes): asertar que listarDocumentos recibe descriptor.carpeta; test de dependencias.ajustes explícitos y de crearDescriptorFeature con ajustes propios (URL de Documento).
 
 ## Próximo paso
 
-- T2 (descriptor de entidades + seguimientos de T1) en refactor/entity-descriptor; ruta delegada (escritor único, varios archivos no triviales).
+- PR 1b en revisión; luego T3 (entidad Tarea) en una rama desde refactor/entity-descriptor.
