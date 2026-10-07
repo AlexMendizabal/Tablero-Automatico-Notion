@@ -1,5 +1,5 @@
 ---
-ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity*", "feat/contribuyentes*", "release/v2*"]
+ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity*", "feat/task-relation*", "feat/contribuyentes*", "release/v2*"]
 ---
 
 # Tareas avanzadas y núcleo modular
@@ -30,7 +30,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Estrategia: PRs encadenados (1a, 1b, 2, 3, 4, 5), apilados: el PR 1a contra main y cada PR siguiente sobre la rama del anterior.
 - PR 1a: #8 (refactor/modular-core → main), mergeado en 1e85a6c.
 - PR 1b: #9 (refactor/entity-descriptor → main), mergeado.
-- PR 2: rama feat/task-entity desde main.
+- PR 2: #10 (feat/task-entity → main), mergeado. Fix de CI 0602e74: los tests aíslan GITHUB_REPOSITORY.
+- PR 3: rama feat/task-relation desde main.
 
 ## Progreso
 
@@ -42,8 +43,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Seguimientos de T2: resueltos en T3 (listarDocumentos recibe la carpeta del descriptor; ajustes explícitos y URL de Documento con carpetas propias).
 - T3: ruta delegada (escritor único). 8 commits 0d23141..ed3a1e3; tests 190 → 233; typecheck limpio; sin carpeta de tareas la salida de sync:dry es idéntica a la base. RED observado como error de compilación (API inexistente) en cada comportamiento nuevo; los tests de seguimiento fijan comportamiento existente (validados rompiendo la URL a propósito).
 - Revisión T3: 3 tramos de riesgo medio (8edb740..9efc5d7, ..6b0cfda, ..ed3a1e3), aprobados y confirmados.
-- Seguimientos para T4 (no bloqueantes): validar el formato del slug de `feature` antes de convertirlo en relación; test del error de lectura de odd/tareas distinto de ENOENT; los avisos de feature padre no se imprimen en los retornos tempranos por repo superficial o git ausente; test de NOTION_TAREAS_DB_ID vacío; asertar cantidad de páginas en el test de URL de Documento.
+- Seguimientos para T4 (no bloqueantes): validar el formato del slug de `feature` antes de convertirlo en relación; test del error de lectura de odd/tareas distinto de ENOENT; los avisos de feature padre no se imprimen en los retornos tempranos por repo superficial o git ausente; test de NOTION_TAREAS_DB_ID vacío; asertar cantidad de páginas en el test de URL de Documento; rechazar TABLERO_CARPETA_TAREAS vacía o igual a TABLERO_CARPETA; con credenciales y sin NOTION_TAREAS_DB_ID las tareas no se validan y sus errores de formato quedan ocultos (validar siempre, saltear solo la escritura).
 
 ## Próximo paso
 
-- PR 2 en revisión; luego T4 (relación Feature y Responsable) en una rama desde main.
+- T4 (relación Feature, Responsable propiedad de Notion y seguimientos de T3) en feat/task-relation; ruta delegada (escritor único).
