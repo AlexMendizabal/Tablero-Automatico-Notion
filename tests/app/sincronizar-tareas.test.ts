@@ -12,7 +12,7 @@
 import * as app from '../../src/app/sincronizar';
 import { crearDescriptorFeature } from '../../src/core/entities/feature';
 import type { FetchInyectado } from '../../src/ports/notion';
-import type { DependenciasSincronizar, RepositorioGit } from '../../src/ports/sincronizar';
+import type { DependenciasSincronizar, EjecutarComando, RepositorioGit } from '../../src/ports/sincronizar';
 import {
     combinarNotionFalsos,
     crearEjecutarFalso,
@@ -423,5 +423,67 @@ describe('sincronizar — corrida real con Features y Tareas', () => {
         expect(tareas.paginas.size).toBe(0);
         expect(resumen.tareas?.codigo).toBe(1);
         expect(resumen.codigo).toBe(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Ajustes explícitos (seguimiento del review de PR 1b)
+// ---------------------------------------------------------------------------
+
+describe('sincronizar — ajustes explícitos distintos de los por defecto', () => {
+    test('las carpetas y la rama base recibidas guían la lectura, el fechado en git y el enlace "Documento"', async () => {
+        const ajustes = { carpetaFeatures: 'docs/features', carpetaTareas: 'docs/tareas', ramaBaseDocumento: 'develop' };
+        const features = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const tareas = crearNotionFalsoTareas();
+        const { fetchFalso } = combinarNotionFalsos(features, tareas);
+        const rutasFechadas: string[] = [];
+        const base = ejecutar();
+        const ejecutarEspiado: EjecutarComando = (comando, args) => {
+            if (comando === 'git' && args[0] === 'log') rutasFechadas.push(args[args.length - 1]);
+            return base(comando, args);
+        };
+        const carpetasLeidas: string[] = [];
+
+        const resumen = await sincronizar(
+            { dryRun: false },
+            {
+                raizRepo: '/repo',
+                ejecutar: ejecutarEspiado,
+                fetchInyectado: fetchFalso,
+                listarDocumentos: (carpeta) => {
+                    carpetasLeidas.push(carpeta);
+                    return documentosFeatures();
+                },
+                listarDocumentosTareas: (carpeta) => {
+                    carpetasLeidas.push(carpeta);
+                    return documentosTareas()();
+                },
+                credenciales: { token: 'tok', databaseId: features.databaseId, databaseIdTareas: tareas.databaseId },
+                hoy: HOY,
+                ajustes,
+            },
+        );
+
+        expect(resumen.codigo).toBe(0);
+        expect(carpetasLeidas).toEqual(['docs/features', 'docs/tareas']);
+        expect(rutasFechadas).toEqual(['docs/features/feature-x.md', 'docs/tareas/tarea-x.md']);
+        expect([...features.paginas.values()][0].properties.Documento).toEqual({
+            url: 'https://github.com/owner/repo/blob/develop/docs/features/feature-x.md',
+        });
+        expect([...tareas.paginas.values()][0].properties.Documento).toEqual({
+            url: 'https://github.com/owner/repo/blob/develop/docs/tareas/tarea-x.md',
+        });
+    });
+
+    test('"sincronizarEntidad" pide a listarDocumentos exactamente la carpeta del descriptor', async () => {
+        const listarDocumentos = jest.fn(() => documentosFeatures());
+
+        await app.sincronizarEntidad(
+            crearDescriptorFeature({ ...AJUSTES, carpetaFeatures: 'otra/carpeta' }),
+            { dryRun: true },
+            puertosFalsos(listarDocumentos),
+        );
+
+        expect(listarDocumentos.mock.calls).toEqual([['otra/carpeta']]);
     });
 });

@@ -106,6 +106,7 @@ describe('descriptor de Feature', () => {
             hoy: new Date('2026-09-21T00:00:00Z'),
             ownerRepo: 'org/repo',
         });
+        expect(descriptor.carpeta).toBe('docs/features');
         expect(fila.documento).toBe('https://github.com/org/repo/blob/develop/docs/features/x.md');
     });
 });
