@@ -34,16 +34,24 @@ export function textoRico(contenido: string): RichTextArray {
     return contenido === '' ? [] : [{ type: 'text', text: { content: contenido } }];
 }
 
+/** Claves que la sincronización puede escribir: todas menos las propiedades
+ *  de Notion (`propiedadesDeNotion`). */
+export function clavesEscribibles<C extends string, E extends string>(esquema: EsquemaEntidad<C, E>): C[] {
+    return clavesPropiedad(esquema).filter((clave) => !esquema.propiedadesDeNotion.includes(clave));
+}
+
 /** Frontera con Notion: pasa de claves internas a los nombres visibles del
  *  idioma, en el orden de `tiposPropiedad`. Las claves ausentes se omiten
- *  (ej. la huella, que se escribe aparte al final). */
+ *  (ej. la huella, que se escribe aparte al final), y las propiedades de
+ *  Notion se descartan SIEMPRE, aunque vengan en `valores`: esta es la única
+ *  puerta por la que pasan las propiedades que se escriben. */
 export function traducirPropiedadesEntidad<C extends string, E extends string>(
     esquema: EsquemaEntidad<C, E>,
     valores: Partial<Record<C, unknown>>,
     idioma: Idioma,
 ): PropiedadesNotionBrutas {
     const traducidas: PropiedadesNotionBrutas = {};
-    for (const clave of clavesPropiedad(esquema)) {
+    for (const clave of clavesEscribibles(esquema)) {
         if (valores[clave] !== undefined) traducidas[esquema.textos[idioma].propiedades[clave]] = valores[clave];
     }
     return traducidas;
