@@ -60,7 +60,9 @@ jobs:
           esperar() { # $1 = input, $2 = expected output, or "EXIT2"
             if salida="$(bash scripts/dry-run-flag.sh "$1")"; then obtenido="$salida"; else obtenido="EXIT$?"; fi
             if [ "$obtenido" != "$2" ]; then
-              echo "::error::dry-run input [$1] gave [$obtenido], expected [$2]"
+              # %q escapes newlines so a test input is never read as a
+              # workflow command.
+              echo "::error::dry-run input $(printf '%q' "$1") gave $(printf '%q' "$obtenido"), expected $2"
               fallas=1
             fi
           }
@@ -74,3 +76,20 @@ jobs:
           esperar 'tr ue' 'EXIT2'
           esperar $'true\n::add-mask::x' 'EXIT2'
           exit "$fallas"
+      # End to end: the action must stop at the dry-run check (not later,
+      # e.g. for missing credentials) when given an unknown value.
+      - id: dry-run-invalid
+        uses: ./
+        continue-on-error: true
+        with:
+          dry-run: 'on'
+      - name: Expect the action to reject the unknown dry-run value
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.dry-run-invalid.outcome }}
+          REASON: ${{ steps.dry-run-invalid.outputs.failure-reason }}
+        run: |
+          if [ "$OUTCOME" != "failure" ] || [ "$REASON" != "invalid-dry-run" ]; then
+            echo "::error::expected failure with reason invalid-dry-run, got outcome=$OUTCOME reason=$REASON"
+            exit 1
+          fi

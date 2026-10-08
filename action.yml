@@ -49,6 +49,11 @@ inputs:
     required: false
     default: ''
 
+outputs:
+  failure-reason:
+    description: 'Set when the action fails before running the sync: "invalid-dry-run" or "classifier-error". Empty otherwise.'
+    value: ${{ steps.sincronizar.outputs.failure-reason }}
+
 runs:
   using: 'composite'
   steps:
@@ -66,6 +71,7 @@ runs:
         npm run build
 
     - name: Sync with Notion
+      id: sincronizar
       shell: bash
       working-directory: ${{ github.workspace }}
       env:
@@ -93,9 +99,17 @@ runs:
         if [ -n "$ENTRADA_RAMA_BASE" ]; then export TABLERO_RAMA_BASE="$ENTRADA_RAMA_BASE"; fi
         # Falla cerrado: un valor desconocido (ej. "on", "y") corta en vez de
         # hacer una sincronización real que escribe en Notion.
-        # La clasificación vive en scripts/dry-run-flag.sh (probada en CI).
-        if ! bandera="$(bash "$ACCION_RUTA/scripts/dry-run-flag.sh" "$ENTRADA_DRY_RUN")"; then
+        # La clasificación vive en scripts/dry-run-flag.sh; CI prueba el script
+        # y también esta conexión (el output failure-reason del paso).
+        estado=0
+        bandera="$(bash "$ACCION_RUTA/scripts/dry-run-flag.sh" "$ENTRADA_DRY_RUN")" || estado=$?
+        if [ "$estado" -eq 2 ]; then
+          echo "failure-reason=invalid-dry-run" >> "$GITHUB_OUTPUT"
           echo "::error title=dry-run inválido::dry-run debe ser true/1/yes o false/0/no."
+          exit 1
+        elif [ "$estado" -ne 0 ]; then
+          echo "failure-reason=classifier-error" >> "$GITHUB_OUTPUT"
+          echo "::error title=Error interno de la Action::no se pudo ejecutar scripts/dry-run-flag.sh (código $estado)."
           exit 1
         fi
         argumentos=()
