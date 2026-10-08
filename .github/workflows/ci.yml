@@ -50,3 +50,15 @@ jobs:
       - uses: ./
         with:
           dry-run: true
+      # Fail closed: an unknown dry-run value must stop the step instead of
+      # running a real sync.
+      - id: dry-run-invalido
+        uses: ./
+        continue-on-error: true
+        with:
+          dry-run: 'on'
+      - name: Expect the invalid dry-run value to fail
+        if: steps.dry-run-invalido.outcome != 'failure'
+        run: |
+          echo "::error::dry-run: 'on' should have failed the action step."
+          exit 1
