@@ -59,10 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (after normalization) is now a configuration error, reported before any
   Notion call. The comparison resolves `.` and `..` segments, treats an
   absolute path inside the repository as relative to its root, and ignores
-  letter case on Windows and macOS.
-- `gh pr list` now also requests each PR's `author` (same single call). When `TABLERO_CARPETA_TAREAS` is not set and `TABLERO_CARPETA`
-  is the default tasks folder (`odd/tareas`), tasks are disabled instead and
-  the output is the features-only one.
+  letter case on Windows and macOS. When `TABLERO_CARPETA_TAREAS` is not set
+  and `TABLERO_CARPETA` is the default tasks folder (`odd/tareas`), tasks are
+  disabled instead and the output is the features-only one.
+- `gh pr list` now also requests each PR's `author` (same single call).
 - The task frontmatter `feature` must be a valid document slug: not empty,
   not `.` or `..`, no leading or trailing whitespace (inner spaces and dots
   are fine, e.g. `mi feature` or `a..b`), and no `/`, `\`,
