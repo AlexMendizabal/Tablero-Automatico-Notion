@@ -52,8 +52,11 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Seguimientos de T4: resueltos en T5 (comparación de carpetas con mayúsculas, ".." y rutas absolutas; test de página vinculada con slugs duplicados).
 - T5: ruta delegada (escritor único). 14 commits e1644f5..d886a9a; tests 296 → 409 (también con GITHUB_REPOSITORY y BOARD_LANGUAGE=en). Contribuyentes desde ramas vivas (base..rama), commits ancla, Co-authored-by, autor de cada PR y autores de los commits de cada PR mergeado (decisión del usuario: opción 2, una llamada gh pr view por PR mergeado y por corrida). Columna opcional: si falta, se informa y no se escribe. Si git o gh fallan para un documento, se conservan los contribuyentes de Notion (no se envía la propiedad) y se avisa.
 - Revisión T5: tramos y conjunto aprobados. La revisión del conjunto hasta 6ba6ead quedó aprobada sin confirmación porque la rama avanzó durante la revisión; los commits posteriores se revisaron y confirmaron aparte.
-- Seguimientos para T6 (no bloqueantes): la validación de forma de gh pr view es todo-o-nada (un commit sin authors deja el PR como desconocido; elección conservadora); no leer fuentes de contribuyentes (git log/show, gh pr view) cuando la base no tiene la columna opcional.
+- Seguimientos de T5: resueltos en T6 (no se leen fuentes de contribuyentes si falta la columna o si la entidad no escribe en Notion).
+- T6 (preparación): ruta delegada (escritor único). Commits 79b1ff2..f45811c: build a dist/ con bin tablero-notion, action.yml compuesta (inputs por env, dry-run true/1/yes, credenciales exportadas solo si tienen valor, npm ci --include=dev), CI con build, prueba del CLI compilado y job que usa la Action, skill/SKILL.md, README es/en con instalación y "Upgrading from v1", CHANGELOG 2.0.0. Tests 409 → 421. npm pack --dry-run: 29 archivos (dist, READMEs, LICENSE, CHANGELOG, package.json, skill). El nombre tablero-automatico-notion está libre en npm.
+- Revisión T6: dos revisiones de 4 lentes (riesgo, resiliencia, legibilidad, confiabilidad), aprobadas y confirmadas; sus hallazgos se aplicaron antes de abrir el PR.
+- Pendiente para cerrar T6 (decisión del usuario): publicar en npm y crear el tag/release v2.0.0 (y el tag móvil v2 para la Action). Hasta entonces, las instrucciones de instalación del README describen la versión por publicar.
 
 ## Próximo paso
 
-- T6 (distribución pública) en release/v2.0.0; ruta delegada (escritor único). Este PR prepara el paquete (build, bin, files, action.yml, skill, CI, v2.0.0) pero NO publica en npm ni crea el tag: eso requiere confirmación explícita del usuario después del merge.
+- Merge del PR 5; después, con confirmación del usuario: tag v2.0.0 + v2, release y npm publish. Luego QA1 con bases de Notion de prueba.
