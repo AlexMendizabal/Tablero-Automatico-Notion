@@ -516,3 +516,30 @@ describe('sincronizar — sin la columna "Contribuyentes" no se leen sus fuentes
         expect(lecturasDeAutoresGit(llamadas).length).toBeGreaterThan(0);
     });
 });
+
+describe('sincronizar — Tareas que omiten Notion (sin NOTION_TAREAS_DB_ID)', () => {
+    test('no leen las fuentes de contribuyentes de sus documentos, pero los validan igual', async () => {
+        const { entrada: base, features } = escenarioNotion('es');
+        const { ejecutar, llamadas, llamadasGh } = conRegistro(
+            crearEjecutarFalso({ ramas: RAMAS, prs: PRS_VIEJOS, autoresPorRama: AUTORES_POR_RAMA, commitsPorPR: COMMITS_POR_PR }),
+        );
+        const lineas: string[] = [];
+
+        const resumen = await sincronizar({ dryRun: false }, {
+            ...base,
+            ejecutar,
+            log: (l) => lineas.push(l),
+            credenciales: { token: 'tok', databaseId: features.databaseId },
+            listarDocumentos: () => [{ slug: 'padre', contenido: doc('["feat/nada"]') }],
+            listarDocumentosTareas: () => [
+                { slug: 'tarea-x', contenido: doc('["feat/viejo-1", "feat/x-1"]') },
+                { slug: 'tarea-rota', contenido: '# sin frontmatter' },
+            ],
+        });
+
+        expect(vistas(llamadasGh)).toEqual([]);
+        expect(llamadas.filter((a) => a.includes(`--format=${FORMATO_AUTORES}`))).toEqual([]);
+        expect(resumen.tareas?.erroresDeFormato.map((e) => e.slug)).toEqual(['tarea-rota']);
+        expect(resumen.codigo).toBe(1);
+    });
+});

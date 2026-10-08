@@ -93,6 +93,7 @@ export const ESQUEMA_TAREA: EsquemaEntidad<ClavePropiedadTarea, Estado> = {
     propiedadesDeNotion: ['responsable'],
     // Como en Features: sin la columna en la base, no se escribe.
     propiedadesOpcionales: ['contribuyentes'],
+    claveContribuyentes: 'contribuyentes',
     textos: TEXTOS_TAREA_POR_IDIOMA,
 };
 

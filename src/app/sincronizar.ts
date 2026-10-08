@@ -170,9 +170,6 @@ const RAZON_ID_INVALIDO = 'el ID de la base de Notion no es válido';
 const RAZON_ESQUEMA_INVALIDO = 'el esquema de la base de Notion no coincide';
 const RAZON_IDIOMA_INVALIDO = 'el idioma del tablero (BOARD_LANGUAGE) no es válido';
 const RAZON_AJUSTES_INVALIDOS = 'las carpetas de documentos no son válidas';
-/** Clave interna de la columna opcional de contribuyentes (Features y
- *  Tareas): sin ella en la base, sus fuentes ni se consultan. */
-const CLAVE_CONTRIBUYENTES = 'contribuyentes';
 
 /** Construye y loguea el resumen de un fallo de entorno (carpeta faltante,
  *  git no disponible, clon superficial con anclas declaradas): código 1,
@@ -642,7 +639,10 @@ export async function sincronizarEntidad<
     // contribuyentes: sin la columna en la base (se conoce al leer el
     // esquema) no se consultan sus fuentes (git log/show, gh pr view) y la
     // fila los deja desconocidos, que de todos modos no se escriben. Sin
-    // consultar Notion no se sabe si la columna existe: se leen.
+    // consultar Notion no se sabe si la columna existe: se leen solo si se
+    // muestran (dry-run sin credenciales), nunca para una entidad que omite
+    // Notion y descarta sus filas.
+    const claveContribuyentes = descriptor.claveContribuyentes;
     const calcularFilas = (leerContribuyentes: boolean): F[] => {
         const slugsSinContribuyentes: string[] = [];
         const filasCalculadas = documentosValidos.map((documento) => {
@@ -683,12 +683,13 @@ export async function sincronizarEntidad<
 
     // Validado todo lo que no depende de Notion: sin escribir (ni leer) nada.
     if (contexto.omitirNotion) {
-        calcularFilas(true);
+        // Solo por los avisos de los documentos: las filas se descartan.
+        calcularFilas(false);
         return cerrar(resumenSinNotion());
     }
 
     if (!credenciales) {
-        const filas = calcularFilas(true);
+        const filas = calcularFilas(claveContribuyentes !== undefined);
         log('--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:');
         log(descriptor.encabezadoFilaLegible);
         for (const fila of filas) log(descriptor.formatearFilaLegible(fila));
@@ -740,7 +741,7 @@ export async function sincronizarEntidad<
     }
     const traducir = (valores: Partial<Record<C, unknown>>) =>
         traducirPropiedadesEntidad(descriptor, valores, idioma, omitidas);
-    const filas = calcularFilas(!omitidas.includes(CLAVE_CONTRIBUYENTES as C));
+    const filas = calcularFilas(claveContribuyentes !== undefined && !omitidas.includes(claveContribuyentes));
 
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
     const paginasExistentesCrudas = paginasNotion.map((pagina) =>
