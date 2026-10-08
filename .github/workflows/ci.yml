@@ -50,15 +50,27 @@ jobs:
       - uses: ./
         with:
           dry-run: true
-      # Fail closed: an unknown dry-run value must stop the step instead of
-      # running a real sync.
-      - id: dry-run-invalido
-        uses: ./
-        continue-on-error: true
-        with:
-          dry-run: 'on'
-      - name: Expect the invalid dry-run value to fail
-        if: steps.dry-run-invalido.outcome != 'failure'
+      # Fail closed: the dry-run classifier must accept only known values and
+      # reject anything else, so a typo never turns into a real sync.
+      - name: Check dry-run input classification
+        shell: bash
         run: |
-          echo "::error::dry-run: 'on' should have failed the action step."
-          exit 1
+          set -u
+          fallas=0
+          esperar() { # $1 = input, $2 = expected output, or "EXIT2"
+            if salida="$(bash scripts/dry-run-flag.sh "$1")"; then obtenido="$salida"; else obtenido="EXIT$?"; fi
+            if [ "$obtenido" != "$2" ]; then
+              echo "::error::dry-run input [$1] gave [$obtenido], expected [$2]"
+              fallas=1
+            fi
+          }
+          esperar 'true' '--dry-run'
+          esperar ' YES ' '--dry-run'
+          esperar '1' '--dry-run'
+          esperar 'false' ''
+          esperar 'No' ''
+          esperar '' ''
+          esperar 'on' 'EXIT2'
+          esperar 'tr ue' 'EXIT2'
+          esperar $'true\n::add-mask::x' 'EXIT2'
+          exit "$fallas"
