@@ -6,6 +6,7 @@
  * base, autores de sus anclas de "commits" y autores de sus PRs, más el aviso
  * cuando la rama base no existe.
  */
+import { FORMATO_AUTORES } from '../../src/adapters/git-cli';
 import type { AjustesProyecto } from '../../src/core/ajustes';
 import { crearDescriptorFeature, type DescriptorFeature } from '../../src/core/entities/feature';
 import type { FilaTablero } from '../../src/core/types';
@@ -423,5 +424,29 @@ describe('sincronizar — contribuyentes desconocidos (git o gh fallaron)', () =
 
         expect(lineas.find((l) => l.startsWith('a '))).toMatch(/ \| \?$/);
         expect(lineas).toContain(aviso('a'));
+    });
+});
+
+describe('sincronizarEntidad — ancla de "commits" inexistente', () => {
+    test('es un error de formato de ese documento: nunca llega a leer autores ni vuelve desconocidos a los demás', async () => {
+        const inexistente = 'd'.repeat(40);
+        const { resumen, filas, llamadas, lineas } = await correr(
+            [
+                { slug: 'roto', contenido: doc('["feat/x-1"]', [inexistente]) },
+                { slug: 'sano', contenido: doc('["feat/x-1"]', [SHA]) },
+            ],
+            {
+                commits: { [SHA]: '2026-07-01T00:00:00Z' },
+                autoresPorCommit: { [SHA]: [autorCommit('Carla', 'c@x.com')] },
+            },
+        );
+
+        expect(resumen.erroresDeFormato).toEqual([
+            { slug: 'roto', errores: [`El commit "${inexistente}" listado en "commits" no existe en el repositorio.`] },
+        ]);
+        expect(filas.map((f) => [f.slug, f.contribuyentes])).toEqual([['sano', ['Ana', 'Bruno', 'Carla', 'octocat']]]);
+        const lecturasDeAutores = llamadas.filter((a) => a[0] === 'show' && a.includes(`--format=${FORMATO_AUTORES}`));
+        expect(lecturasDeAutores.map((a) => a[a.length - 1])).toEqual([SHA]);
+        expect(lineas.some((l) => l.startsWith('Aviso: no se pudieron leer los contribuyentes'))).toBe(false);
     });
 });
