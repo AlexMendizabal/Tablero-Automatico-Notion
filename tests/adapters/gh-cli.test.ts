@@ -64,7 +64,6 @@ describe('obtenerAutoresDePR', () => {
                 },
                 { authors: [{ name: 'Sin Cuenta', email: 's@x.com' }] },
                 { authors: [] },
-                {},
             ],
         });
         const autores = obtenerAutoresDePR((comando, args) => {
@@ -88,4 +87,16 @@ test('obtenerAutoresDePR: si gh falla o su salida no es JSON, null (no se sabe)'
     ).toBeNull();
     expect(obtenerAutoresDePR(() => 'no es json', 1)).toBeNull();
     expect(obtenerAutoresDePR(() => '{"commits":[]}', 1)).toEqual([]);
+});
+
+test.each(['null', '[]', '{}', '{"commits":"x"}', '{"commits":[null]}', '{"commits":[{"authors":"x"}]}', '{"commits":[{"authors":[null]}]}', ''])(
+    'obtenerAutoresDePR: una salida sin la forma esperada (%s) es ilegible (null), sin lanzar',
+    (salida) => {
+        expect(obtenerAutoresDePR(() => salida, 1)).toBeNull();
+    },
+);
+
+test('obtenerAutoresDePR: campos de autor que no son texto se ignoran, sin lanzar', () => {
+    const salida = JSON.stringify({ commits: [{ authors: [{ login: 7, name: 'Ana', email: null }] }] });
+    expect(obtenerAutoresDePR(() => salida, 1)).toEqual([{ nombre: 'Ana', email: '', coautores: [] }]);
 });
