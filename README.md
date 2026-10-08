@@ -122,7 +122,8 @@ jobs:
           board-language: en # optional, default es
 ```
 
-Inputs: `notion-token` and `notion-database-id` (required);
+Inputs: `notion-token` and `notion-database-id` (required for a real
+sync; without them a run without `dry-run` fails with a clear error);
 `notion-tasks-database-id`, `board-language`, `dry-run` (`true` never writes
 to Notion; useful on `pull_request` to validate documents without secrets),
 `features-folder`, `tasks-folder` and `base-branch` (optional; they map to

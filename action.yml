@@ -17,11 +17,13 @@ branding:
 
 inputs:
   notion-token:
-    description: 'Notion integration token (NOTION_TOKEN). Store it as a secret.'
-    required: true
+    description: 'Notion integration token (NOTION_TOKEN). Store it as a secret. Required for a real sync; may be omitted with dry-run.'
+    required: false
+    default: ''
   notion-database-id:
-    description: 'ID or URL of the Notion Features database (NOTION_TABLERO_DB_ID).'
-    required: true
+    description: 'ID or URL of the Notion Features database (NOTION_TABLERO_DB_ID). Required for a real sync; may be omitted with dry-run.'
+    required: false
+    default: ''
   notion-tasks-database-id:
     description: 'ID or URL of the Notion Tasks database (NOTION_TAREAS_DB_ID). Without it, tasks are validated but not written.'
     required: false

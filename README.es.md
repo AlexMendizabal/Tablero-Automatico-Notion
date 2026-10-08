@@ -123,7 +123,9 @@ jobs:
           board-language: es # opcional, es por defecto
 ```
 
-Entradas: `notion-token` y `notion-database-id` (obligatorias);
+Entradas: `notion-token` y `notion-database-id` (obligatorias para
+sincronizar de verdad; sin ellas, una corrida sin `dry-run` corta con un
+error claro);
 `notion-tasks-database-id`, `board-language`, `dry-run` (`true` nunca
 escribe en Notion; sirve en `pull_request` para validar los documentos sin
 secrets), `features-folder`, `tasks-folder` y `base-branch` (opcionales;
