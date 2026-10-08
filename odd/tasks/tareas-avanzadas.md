@@ -10,7 +10,7 @@ ramas: ["refactor/modular-core", "refactor/entity-descriptor", "feat/task-entity
 - [x] **T2 — Descriptor de entidades (PR 1b)**: llevar esquema, textos, regla de estado y armado de fila a core/entities/feature.ts y orquestar con sincronizarEntidad sin renombrar columnas de Features.
 - [x] **T3 — Entidad Tarea desde el repo (PR 2)**: documentos en odd/tareas/*.md con feature padre opcional y NOTION_TAREAS_DB_ID opcional que saltea la entidad si falta.
 - [x] **T4 — Esquema de Notion para Tareas (PR 3)**: base de Tareas con relación a Feature, Responsable (people) propiedad de Notion que nunca se escribe y Contribuyentes (multi-select).
-- [ ] **T5 — Contribuyentes desde git y PRs (PR 4)**: autores de ramas, commits ancla del frontmatter, trailers Co-authored-by y autores de PR normalizados con .mailmap.
+- [x] **T5 — Contribuyentes desde git y PRs (PR 4)**: autores de ramas, commits ancla del frontmatter, trailers Co-authored-by y autores de PR normalizados con .mailmap.
 - [ ] **T6 — Distribución pública (PR 5)**: action.yml, publicación npm, skill de documentos ODD, README es/en y versión v2.0.0.
 - [ ] **QA1 — Sincronización real contra un tablero de prueba**: correr el sync con Features y Tareas sobre bases de Notion de prueba y verificar relación, Responsable intacto y Contribuyentes.
 
@@ -48,8 +48,11 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - T4: ruta delegada (escritor único). 10 commits f163b0d..689ba86; tests 233 → 294 (también con GITHUB_REPOSITORY y BOARD_LANGUAGE=en); cada commit verificado por separado. RED por aserción en cada comportamiento nuevo; los tests que fijan comportamiento existente se validaron rompiendo el código a propósito.
 - Revisión T4: tramos c57527f..54bdfb5, ..d5cfa81, ..9f762e4, conjunto ..9f762e4 y seguimientos ..689ba86, todos aprobados y confirmados. Correcciones derivadas de la revisión: slugs con espacios o puntos internos válidos; Tareas desactivadas (no error) cuando solo la carpeta por defecto coincide con la de Features.
 - Cierre de T4 tras la revisión del conjunto: README alineado con la regla real del slug (fefc0a1); una tarea nunca se vincula a una página huérfana de Features (bf69bcc); sin lista de documentos de Features no se filtran relaciones (e8c6f69). 296 tests; todo aprobado y confirmado.
-- Seguimientos para T5 (no bloqueantes): la comparación de carpetas no contempla mayúsculas/minúsculas, segmentos ".." ni rutas absolutas; el caso de lista de documentos de Features ausente con mapa de páginas presente no tiene test (hoy no es alcanzable); test de a qué página se vincula una tarea cuando Features tiene páginas duplicadas para un slug.
+- Seguimientos de T4: resueltos en T5 (comparación de carpetas con mayúsculas, ".." y rutas absolutas; test de página vinculada con slugs duplicados).
+- T5: ruta delegada (escritor único). 14 commits e1644f5..d886a9a; tests 296 → 409 (también con GITHUB_REPOSITORY y BOARD_LANGUAGE=en). Contribuyentes desde ramas vivas (base..rama), commits ancla, Co-authored-by, autor de cada PR y autores de los commits de cada PR mergeado (decisión del usuario: opción 2, una llamada gh pr view por PR mergeado y por corrida). Columna opcional: si falta, se informa y no se escribe. Si git o gh fallan para un documento, se conservan los contribuyentes de Notion (no se envía la propiedad) y se avisa.
+- Revisión T5: tramos y conjunto aprobados. La revisión del conjunto hasta 6ba6ead quedó aprobada sin confirmación porque la rama avanzó durante la revisión; los commits posteriores se revisaron y confirmaron aparte.
+- Seguimientos para T6 (no bloqueantes): la validación de forma de gh pr view es todo-o-nada (un commit sin authors deja el PR como desconocido; elección conservadora).
 
 ## Próximo paso
 
-- T5 (Contribuyentes) en feat/contribuyentes; ruta delegada (escritor único). Contribuyentes es una propiedad opcional: si la columna no existe en la base, se informa y no se escribe, para no romper tableros existentes.
+- PR 4 en revisión; luego T6 (distribución pública: action.yml, npm, skill, CI, v2.0.0) en una rama desde main. Publicar en npm requiere confirmación explícita del usuario.
