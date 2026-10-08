@@ -1,6 +1,6 @@
 {
   "name": "tablero-automatico-notion",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "type": "commonjs",
   "description": "Sync the status of your features and tasks (ODD documents in odd/tasks/*.md and odd/tareas/*.md) to a Notion board.",
   "bin": {
