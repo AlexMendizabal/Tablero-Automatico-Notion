@@ -32,7 +32,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - PR 1b: #9 (refactor/entity-descriptor → main), mergeado.
 - PR 2: #10 (feat/task-entity → main), mergeado. Fix de CI 0602e74: los tests aíslan GITHUB_REPOSITORY.
 - PR 3: #11 (feat/task-relation → main), mergeado.
-- PR 4: rama feat/contribuyentes desde main.
+- PR 4: #12 (feat/contribuyentes → main), mergeado.
+- PR 5: rama release/v2.0.0 desde main.
 
 ## Progreso
 
@@ -51,8 +52,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Seguimientos de T4: resueltos en T5 (comparación de carpetas con mayúsculas, ".." y rutas absolutas; test de página vinculada con slugs duplicados).
 - T5: ruta delegada (escritor único). 14 commits e1644f5..d886a9a; tests 296 → 409 (también con GITHUB_REPOSITORY y BOARD_LANGUAGE=en). Contribuyentes desde ramas vivas (base..rama), commits ancla, Co-authored-by, autor de cada PR y autores de los commits de cada PR mergeado (decisión del usuario: opción 2, una llamada gh pr view por PR mergeado y por corrida). Columna opcional: si falta, se informa y no se escribe. Si git o gh fallan para un documento, se conservan los contribuyentes de Notion (no se envía la propiedad) y se avisa.
 - Revisión T5: tramos y conjunto aprobados. La revisión del conjunto hasta 6ba6ead quedó aprobada sin confirmación porque la rama avanzó durante la revisión; los commits posteriores se revisaron y confirmaron aparte.
-- Seguimientos para T6 (no bloqueantes): la validación de forma de gh pr view es todo-o-nada (un commit sin authors deja el PR como desconocido; elección conservadora).
+- Seguimientos para T6 (no bloqueantes): la validación de forma de gh pr view es todo-o-nada (un commit sin authors deja el PR como desconocido; elección conservadora); no leer fuentes de contribuyentes (git log/show, gh pr view) cuando la base no tiene la columna opcional.
 
 ## Próximo paso
 
-- PR 4 en revisión; luego T6 (distribución pública: action.yml, npm, skill, CI, v2.0.0) en una rama desde main. Publicar en npm requiere confirmación explícita del usuario.
+- T6 (distribución pública) en release/v2.0.0; ruta delegada (escritor único). Este PR prepara el paquete (build, bin, files, action.yml, skill, CI, v2.0.0) pero NO publica en npm ni crea el tag: eso requiere confirmación explícita del usuario después del merge.
