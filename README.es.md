@@ -134,6 +134,11 @@ corresponden a `TABLERO_CARPETA`, `TABLERO_CARPETA_TAREAS` y
 a `gh` el `github.token` del workflow, así que el job necesita
 `pull-requests: read`. El checkout **tiene que** usar `fetch-depth: 0`.
 
+> La action corre `actions/setup-node` (Node 22) dentro del job que la llama,
+> y eso cambia el `node` del `PATH` para todos los pasos siguientes de ese
+> job. Conviene correrla en su propio job (como en el ejemplo), o después de
+> los pasos que necesiten otra versión de Node.
+
 ### Opción 2: npm / npx
 
 El paquete es `tablero-automatico-notion`; su comando es `tablero-notion`.

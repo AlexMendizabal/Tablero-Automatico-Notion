@@ -46,4 +46,4 @@ Report the documents created or changed and the observed dry-run result (exit co
 
 ## References
 
-- `../README.md` — full document contract, Notion schema, and status rules.
+- https://github.com/AlexMendizabal/Tablero-Automatico-Notion#readme — full document contract, Notion schema, and status rules.

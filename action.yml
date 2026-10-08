@@ -9,7 +9,7 @@
 # todos viajan por "env:" y el script los lee como variables de entorno.
 
 name: 'Tablero Automatico Notion'
-description: 'Sync the status of your ODD feature and task documents (odd/tasks, odd/tareas) to a Notion board.'
+description: 'Sync your ODD feature and task documents (odd/tasks, odd/tareas) to a Notion board. Sets up Node 22 in the calling job.'
 author: 'AlexMendizabal'
 branding:
   icon: 'check-square'

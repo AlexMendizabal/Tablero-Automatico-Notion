@@ -132,6 +132,11 @@ only set when non-empty). The action passes the workflow's `github.token` to
 `gh`, so the job needs `pull-requests: read`. The checkout **must** use
 `fetch-depth: 0`.
 
+> The action runs `actions/setup-node` (Node 22) inside the calling job,
+> which changes `node` on the `PATH` for every later step of that job. Run it
+> in its own job (as above), or after any steps that need another Node
+> version.
+
 ### Option 2: npm / npx
 
 The package is `tablero-automatico-notion`; its command is `tablero-notion`.
