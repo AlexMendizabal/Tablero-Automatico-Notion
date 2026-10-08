@@ -94,12 +94,15 @@ runs:
         # Falla cerrado: un valor desconocido (ej. "on", "y") corta en vez de
         # hacer una sincronización real que escribe en Notion.
         argumentos=()
-        dry_run="$(printf '%s' "$ENTRADA_DRY_RUN" | tr -d '[:space:]')"
+        # Recorta solo los extremos: un espacio en el medio no se normaliza.
+        dry_run="$(printf '%s' "$ENTRADA_DRY_RUN" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
         case "${dry_run,,}" in
           true | 1 | yes) argumentos+=(--dry-run) ;;
           false | 0 | no | '') ;;
           *)
-            echo "::error title=dry-run inválido::dry-run debe ser true/1/yes o false/0/no (recibido: \"$ENTRADA_DRY_RUN\")."
+            # El valor recibido NO se imprime: un salto de línea en él se
+            # leería como otro comando de workflow (::add-mask::, etc.).
+            echo "::error title=dry-run inválido::dry-run debe ser true/1/yes o false/0/no."
             exit 1
             ;;
         esac
