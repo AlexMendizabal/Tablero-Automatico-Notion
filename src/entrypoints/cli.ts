@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Sync del estado de cada feature hacia un tablero de Notion, a partir de los
  * documentos ODD en `odd/tasks/*.md` (ver el README de este repositorio para
@@ -9,8 +10,10 @@
  *
  * Uso:
  *   npx tsx src/entrypoints/cli.ts [--dry-run]
+ *   tablero-notion [--dry-run]   (instalado desde npm; compilado en dist/)
  */
 import { execFileSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 
 import { sincronizar } from '../app/sincronizar';
 import type { AjustesProyecto } from '../core/ajustes';
@@ -96,6 +99,7 @@ tareas (odd/tareas/*.md) hacia Notion.
 Uso:
   npm run sync -- [--dry-run] [--ayuda]
   npx tsx src/entrypoints/cli.ts [--dry-run] [--ayuda]
+  tablero-notion [--dry-run] [--ayuda]   (instalado desde npm)
 
   --dry-run   No escribe en Notion. Sin credenciales, imprime las filas
               calculadas desde el repositorio. Con credenciales, consulta
@@ -159,11 +163,25 @@ function principal(argumentos: string[]): void {
 /**
  * `true` si `rutaScript` (normalmente `process.argv[1]`) es este punto de
  * entrada: `src/entrypoints/cli.ts` vía tsx, o el `.js`/`.mjs`/`.cjs`
- * compilado, con separadores `/` o `\` (Windows). Cualquier otra ruta (el
- * worker de Jest, otro módulo) da `false`.
+ * compilado, con separadores `/` o `\` (Windows). Instalado como paquete,
+ * `process.argv[1]` puede ser el enlace del bin (`node_modules/.bin/
+ * tablero-notion`, también vía npx), que no termina en ese nombre: con
+ * `contexto`, además se lo reconoce si resuelve (realpath) al mismo archivo
+ * que `archivoActual`. Cualquier otra ruta (el worker de Jest, otro módulo,
+ * una ruta irresoluble) da `false`.
  */
-export function esInvocacionDirecta(rutaScript: string | undefined): boolean {
-    return /(^|\/)entrypoints\/cli\.(ts|js|mjs|cjs)$/.test((rutaScript ?? '').replace(/\\/g, '/'));
+export function esInvocacionDirecta(
+    rutaScript: string | undefined,
+    contexto?: { archivoActual: string; resolverRuta?: (ruta: string) => string },
+): boolean {
+    if (/(^|\/)entrypoints\/cli\.(ts|js|mjs|cjs)$/.test((rutaScript ?? '').replace(/\\/g, '/'))) return true;
+    if (!rutaScript || !contexto) return false;
+    const resolverRuta = contexto.resolverRuta ?? ((ruta: string) => realpathSync(ruta));
+    try {
+        return resolverRuta(rutaScript) === resolverRuta(contexto.archivoActual);
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -171,6 +189,6 @@ export function esInvocacionDirecta(rutaScript: string | undefined): boolean {
  * cuando lo importa un test. Se compara contra `process.argv[1]` en vez de
  * `import.meta.url` porque Jest transpila este archivo a CommonJS.
  */
-if (esInvocacionDirecta(process.argv[1])) {
+if (esInvocacionDirecta(process.argv[1], { archivoActual: __filename })) {
     principal(process.argv.slice(2));
 }
