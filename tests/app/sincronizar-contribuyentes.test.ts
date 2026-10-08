@@ -335,7 +335,10 @@ describe('sincronizar — un "gh pr view" por PR en toda la corrida', () => {
         });
 
         expect(vistas(llamadasGh)).toEqual(['3']);
-        expect(lineas.find((l) => l.startsWith('t '))).toMatch(/ | ana-gh, Coautora, Dana$/);
+        // La tarea (segunda entidad) recibe los autores del PR ya consultado
+        // por Features: la última celda de su fila, exacta.
+        const filaTarea = lineas.find((l) => l.startsWith('t '));
+        expect(filaTarea?.split(' | ').at(-1)).toBe('ana-gh, Coautora, Dana');
     });
 });
 
