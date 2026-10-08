@@ -105,7 +105,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_TABLERO_DB_ID: ${{ secrets.NOTION_TABLERO_DB_ID }}
-          # Opcional: sin este secret queda vacío y las Tareas se validan
-          # pero no se escriben en Notion (no es un error).
+          # Opcional: un NOTION_TAREAS_DB_ID vacío (secret sin definir) equivale
+          # a "sin configurar": las Tareas se validan pero no se escriben en
+          # Notion. No vale para toda variable: un TABLERO_CARPETA_TAREAS vacío
+          # es un error de configuración (por eso action.yml nunca exporta
+          # opcionales vacías).
           NOTION_TAREAS_DB_ID: ${{ secrets.NOTION_TAREAS_DB_ID }}
           BOARD_LANGUAGE: ${{ vars.BOARD_LANGUAGE }}

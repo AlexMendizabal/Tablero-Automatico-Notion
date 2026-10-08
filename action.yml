@@ -31,7 +31,7 @@ inputs:
     required: false
     default: ''
   dry-run:
-    description: 'When "true", never writes to Notion: prints the computed rows or the read-only plan.'
+    description: 'When "true", "1" or "yes" (any letter case), never writes to Notion: prints the computed rows or the read-only plan. Any other value runs the real sync.'
     required: false
     default: 'false'
   features-folder:
@@ -67,8 +67,8 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         ACCION_RUTA: ${{ github.action_path }}
-        NOTION_TOKEN: ${{ inputs.notion-token }}
-        NOTION_TABLERO_DB_ID: ${{ inputs.notion-database-id }}
+        ENTRADA_NOTION_TOKEN: ${{ inputs.notion-token }}
+        ENTRADA_TABLERO_DB_ID: ${{ inputs.notion-database-id }}
         ENTRADA_TAREAS_DB_ID: ${{ inputs.notion-tasks-database-id }}
         ENTRADA_BOARD_LANGUAGE: ${{ inputs.board-language }}
         ENTRADA_DRY_RUN: ${{ inputs.dry-run }}
@@ -76,14 +76,19 @@ runs:
         ENTRADA_CARPETA_TAREAS: ${{ inputs.tasks-folder }}
         ENTRADA_RAMA_BASE: ${{ inputs.base-branch }}
       run: |
-        # Las opcionales solo se exportan si vienen con valor: una variable
-        # vacía no es "sin configurar" (ej. TABLERO_CARPETA_TAREAS vacía es
-        # un error de configuración).
+        # Regla: ninguna variable se exporta vacía. Un NOTION_TAREAS_DB_ID
+        # vacío equivale a "sin configurar", pero un TABLERO_CARPETA_TAREAS
+        # vacío es un error de configuración; y una variable vacía ya
+        # definida impide que el .env del repositorio la complete.
+        if [ -n "$ENTRADA_NOTION_TOKEN" ]; then export NOTION_TOKEN="$ENTRADA_NOTION_TOKEN"; fi
+        if [ -n "$ENTRADA_TABLERO_DB_ID" ]; then export NOTION_TABLERO_DB_ID="$ENTRADA_TABLERO_DB_ID"; fi
         if [ -n "$ENTRADA_TAREAS_DB_ID" ]; then export NOTION_TAREAS_DB_ID="$ENTRADA_TAREAS_DB_ID"; fi
         if [ -n "$ENTRADA_BOARD_LANGUAGE" ]; then export BOARD_LANGUAGE="$ENTRADA_BOARD_LANGUAGE"; fi
         if [ -n "$ENTRADA_CARPETA" ]; then export TABLERO_CARPETA="$ENTRADA_CARPETA"; fi
         if [ -n "$ENTRADA_CARPETA_TAREAS" ]; then export TABLERO_CARPETA_TAREAS="$ENTRADA_CARPETA_TAREAS"; fi
         if [ -n "$ENTRADA_RAMA_BASE" ]; then export TABLERO_RAMA_BASE="$ENTRADA_RAMA_BASE"; fi
         argumentos=()
-        if [ "$ENTRADA_DRY_RUN" = "true" ]; then argumentos+=(--dry-run); fi
+        case "${ENTRADA_DRY_RUN,,}" in
+          true | 1 | yes) argumentos+=(--dry-run) ;;
+        esac
         node "$ACCION_RUTA/dist/entrypoints/cli.js" "${argumentos[@]}"
