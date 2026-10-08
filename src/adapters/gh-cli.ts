@@ -2,6 +2,7 @@
  * Adaptador de gh (vía el comando inyectable): pull requests (con el login
  * de su autor) y owner/repo.
  */
+import type { AutorCommit, Identidad } from '../core/contribuyentes';
 import type { PullRequestInfo } from '../core/types';
 import type { EjecutarComando } from '../ports/sincronizar';
 
@@ -36,6 +37,36 @@ export function obtenerPRs(ejecutar: EjecutarComando): PullRequestInfo[] {
         // El autor de un PR de un bot (ej. dependabot) no es un contribuyente.
         ...(d.author?.login && !d.author.is_bot ? { autor: d.author.login } : {}),
     }));
+}
+
+interface AutorGitHub {
+    login?: string;
+    name?: string;
+    email?: string;
+}
+
+/** Un autor de GitHub como identidad de commit: el login si lo hay (así lo
+ *  usa la normalización tal cual), si no su nombre y email. */
+function identidadDeAutorGitHub(autor: AutorGitHub): Identidad {
+    const login = autor.login?.trim();
+    return login ? { nombre: login, email: '' } : { nombre: autor.name ?? '', email: autor.email ?? '' };
+}
+
+/** Autores de los commits de un PR (`gh pr view <n> --json commits`): por
+ *  commit, su primer autor y, como coautores, los demás (GitHub ya resuelve
+ *  ahí los trailers `Co-authored-by`). Sirve para los PRs mergeados, cuyos
+ *  commits ya no se ven como "rama fuera de la base". Si gh falla, ninguno. */
+export function obtenerAutoresDePR(ejecutar: EjecutarComando, numero: number): AutorCommit[] {
+    let datos: { commits?: Array<{ authors?: AutorGitHub[] }> };
+    try {
+        datos = JSON.parse(ejecutar('gh', ['pr', 'view', String(numero), '--json', 'commits']) || '{}');
+    } catch {
+        return [];
+    }
+    return (datos.commits ?? []).flatMap((commit) => {
+        const [autor, ...coautores] = (commit.authors ?? []).map(identidadDeAutorGitHub);
+        return autor ? [{ ...autor, coautores }] : [];
+    });
 }
 
 export function obtenerOwnerRepo(ejecutar: EjecutarComando): string {

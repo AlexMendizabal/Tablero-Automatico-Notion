@@ -64,6 +64,7 @@ function puertosFalsos(
         refRamaBase: () => null,
         autoresDeRango: () => [],
         autoresDeCommit: () => [],
+        autoresDePR: () => [],
     };
     return {
         raizRepo: '/repo',

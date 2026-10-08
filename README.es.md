@@ -429,6 +429,11 @@ lo que el documento ya declara:
   originales ya no están en ninguna rama.
 - **Autores de los PRs** cuyas ramas coinciden con `ramas` (el login de
   GitHub que informa `gh pr list`).
+- **Commits de sus PRs mergeados**: los autores (y coautores) de cada commit
+  de cada PR mergeado cuyas ramas coinciden con `ramas`, según GitHub
+  (`gh pr view <número> --json commits`). Así un merge sin squash no pierde
+  a quienes trabajaron en la rama. Cuesta una llamada a `gh` por PR
+  mergeado y por corrida (Features y Tareas la comparten).
 - **Trailers `Co-authored-by: Nombre <email>`** de esos commits.
 
 Cada persona aparece una sola vez, con su **login de GitHub** cuando se
@@ -455,10 +460,6 @@ ana-gh <ana@ejemplo.com> Ana Pérez <ana@personal.com>
 (la primera línea cambia el nombre de los commits hechos con
 `ana@ejemplo.com`; la segunda, el nombre y el email de los hechos como
 `Ana Pérez <ana@personal.com>`).
-
-Una rama mergeada sin squash deja de aportar sus commits (ya están en la
-rama base); a partir de ahí, sus autores siguen contando por el autor del PR
-o por las anclas que declare el documento.
 
 ## Límites conocidos
 

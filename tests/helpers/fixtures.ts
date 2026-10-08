@@ -83,6 +83,10 @@ export function crearEjecutarFalso(respuestas: {
     /** sha → autores de "git show" con `FORMATO_AUTORES`. Un sha ausente
      *  da una salida vacía. */
     autoresPorCommit?: Record<string, AutorCommit[]>;
+    /** Número de PR → sus commits ("gh pr view <n> --json commits"), cada
+     *  uno con sus `authors` tal como los devuelve GitHub. Un PR ausente no
+     *  tiene commits. */
+    commitsPorPR?: Record<number, AutorGitHubFalso[][]>;
 }): EjecutarComando {
     const ramaBase = respuestas.ramaBase === undefined ? 'origin' : respuestas.ramaBase;
     return (comando: string, args: string[]) => {
@@ -107,6 +111,12 @@ export function crearEjecutarFalso(respuestas: {
         }
         if (comando === 'git' && args[0] === 'for-each-ref') return respuestas.ramas ?? '';
         if (comando === 'gh' && args[0] === 'pr' && args[1] === 'list') return respuestas.prs ?? '[]';
+        if (comando === 'gh' && args[0] === 'pr' && args[1] === 'view') {
+            const commits = respuestas.commitsPorPR?.[Number(args[2])] ?? [];
+            return JSON.stringify({
+                commits: commits.map((authors) => ({ authors, messageHeadline: 'commit', messageBody: '' })),
+            });
+        }
         if (comando === 'git' && args[0] === 'log') {
             const rutaArg = args[args.length - 1];
             const slug = rutaArg.replace(/^odd\/(tasks|tareas)\//, '').replace(/\.md$/, '');
@@ -125,6 +135,13 @@ export function crearEjecutarFalso(respuestas: {
         }
         throw new Error(`ejecutar falso: comando no simulado en este test: ${comando} ${args.join(' ')}`);
     };
+}
+
+/** Un autor de un commit de PR, como lo devuelve `gh pr view --json commits`. */
+export interface AutorGitHubFalso {
+    login?: string;
+    name?: string;
+    email?: string;
 }
 
 /** Lo que imprimiría git con `FORMATO_AUTORES` para esos autores. */

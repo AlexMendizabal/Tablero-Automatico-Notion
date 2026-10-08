@@ -49,11 +49,13 @@ function descriptorEspia(ajustes: AjustesProyecto) {
 /** `ejecutar` falso que además registra cada llamada a git. */
 function conRegistro(ejecutar: EjecutarComando) {
     const llamadas: string[][] = [];
+    const llamadasGh: string[][] = [];
     const registrado: EjecutarComando = (comando, args) => {
         if (comando === 'git') llamadas.push(args);
+        if (comando === 'gh') llamadasGh.push(args);
         return ejecutar(comando, args);
     };
-    return { ejecutar: registrado, llamadas };
+    return { ejecutar: registrado, llamadas, llamadasGh };
 }
 
 const RAMAS = ['feat/x-1\t2026-09-01T00:00:00Z', 'feat/x-2\t2026-09-02T00:00:00Z', 'feat/otra\t2026-09-03T00:00:00Z'].join('\n');
@@ -74,7 +76,7 @@ async function correr(
 ) {
     const ajustes: AjustesProyecto = { carpetaFeatures: 'odd/tasks', carpetaTareas: 'odd/tareas', ramaBaseDocumento: ramaBase };
     const { descriptor, filas } = descriptorEspia(ajustes);
-    const { ejecutar, llamadas } = conRegistro(
+    const { ejecutar, llamadas, llamadasGh } = conRegistro(
         crearEjecutarFalso({ ramas: RAMAS, prs: PRS, autoresPorRama: AUTORES_POR_RAMA, ...opciones }),
     );
     const lineas: string[] = [];
@@ -88,7 +90,7 @@ async function correr(
         log: (l) => lineas.push(l),
         ajustes,
     });
-    return { resumen, filas, llamadas, lineas };
+    return { resumen, filas, llamadas, llamadasGh, lineas };
 }
 
 const doc = (ramas: string, commits: string[] = []) =>
@@ -279,5 +281,60 @@ describe('sincronizar — "Contribuyentes" en Notion', () => {
         expect(resumen.codigo).toBe(1);
         expect(features.llamadas.crearPagina).toBe(0);
         expect(lineas).toContain('La propiedad "Contribuyentes" es de tipo "rich_text", debería ser "multi_select".');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Commits de PRs mergeados (gh pr view)
+// ---------------------------------------------------------------------------
+
+const PRS_VIEJOS = JSON.stringify([
+    { number: 3, headRefName: 'feat/viejo-1', state: 'MERGED', createdAt: '2026-08-01T00:00:00Z', mergedAt: '2026-08-02T00:00:00Z', closedAt: null, author: { login: 'ana-gh' } },
+    { number: 4, headRefName: 'feat/viejo-2', state: 'OPEN', createdAt: '2026-08-01T00:00:00Z', mergedAt: null, closedAt: null, author: { login: 'eva' } },
+    { number: 5, headRefName: 'feat/viejo-3', state: 'CLOSED', createdAt: '2026-08-01T00:00:00Z', mergedAt: null, closedAt: '2026-08-03T00:00:00Z' },
+    { number: 6, headRefName: 'feat/otra-cosa', state: 'MERGED', createdAt: '2026-08-01T00:00:00Z', mergedAt: '2026-08-02T00:00:00Z', closedAt: null },
+]);
+const COMMITS_POR_PR = {
+    3: [[{ login: 'ana-gh' }, { name: 'Coautora', email: 'c@x.com' }], [{ name: 'Dana', email: 'd@x.com' }]],
+    6: [[{ login: 'intrusa' }]],
+};
+const vistas = (llamadasGh: string[][]) => llamadasGh.filter((a) => a[0] === 'pr' && a[1] === 'view').map((a) => a[2]);
+
+describe('sincronizarEntidad — commits de PRs mergeados', () => {
+    test('suma los autores de los commits de sus PRs mergeados; los abiertos o cerrados sin merge no se consultan', async () => {
+        const { filas, llamadasGh } = await correr([{ slug: 'x', contenido: doc('["feat/viejo-*"]') }], {
+            ramas: '',
+            prs: PRS_VIEJOS,
+            commitsPorPR: COMMITS_POR_PR,
+        });
+
+        expect(filas[0].contribuyentes).toEqual(['ana-gh', 'Coautora', 'Dana', 'eva']);
+        expect(vistas(llamadasGh)).toEqual(['3']);
+    });
+});
+
+describe('sincronizar — un "gh pr view" por PR en toda la corrida', () => {
+    test('Features y Tareas que comparten un PR mergeado lo consultan una sola vez', async () => {
+        const { ejecutar, llamadasGh } = conRegistro(
+            crearEjecutarFalso({ ramas: '', prs: PRS_VIEJOS, commitsPorPR: COMMITS_POR_PR }),
+        );
+        const lineas: string[] = [];
+
+        await sincronizar({ dryRun: true }, {
+            raizRepo: '/repo',
+            ejecutar,
+            fetchInyectado: jest.fn(),
+            listarDocumentos: () => [
+                { slug: 'a', contenido: doc('["feat/viejo-1"]') },
+                { slug: 'b', contenido: doc('["feat/viejo-*"]') },
+            ],
+            listarDocumentosTareas: () => [{ slug: 't', contenido: doc('["feat/viejo-1"]') }],
+            credenciales: null,
+            hoy: HOY,
+            log: (l) => lineas.push(l),
+        });
+
+        expect(vistas(llamadasGh)).toEqual(['3']);
+        expect(lineas.find((l) => l.startsWith('t '))).toMatch(/ | ana-gh, Coautora, Dana$/);
     });
 });

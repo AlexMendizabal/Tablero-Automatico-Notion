@@ -419,6 +419,11 @@ document already declares:
   are no longer on any branch.
 - **Authors of the PRs** whose branches match `ramas` (the GitHub login
   reported by `gh pr list`).
+- **Commits of its merged PRs**: the authors (and co-authors) of every commit
+  of each merged PR whose branch matches `ramas`, according to GitHub
+  (`gh pr view <number> --json commits`). This way a merge without squash
+  does not lose the people who worked on the branch. It costs one `gh` call
+  per merged PR per run (shared by Features and Tasks).
 - **`Co-authored-by: Name <email>` trailers** of those commits.
 
 Each person appears once, with their **GitHub login** when it is known (PR
@@ -443,10 +448,6 @@ ana-gh <ana@example.com> Ana Pérez <ana@personal.com>
 
 (the first line renames commits made with `ana@example.com`; the second
 renames and re-emails those made as `Ana Pérez <ana@personal.com>`).
-
-A branch merged without squash stops contributing its commits (they are on
-the base branch now); from then on, its authors still count through the PR
-author or the anchors the document declares.
 
 ## Known limitations
 

@@ -2,7 +2,7 @@
  * Tests del adaptador de gh: los campos que se piden a `gh pr list` (en una
  * sola llamada) y el autor de cada PR (login), sin bots.
  */
-import { obtenerPRs } from '../../src/adapters/gh-cli';
+import { obtenerAutoresDePR, obtenerPRs } from '../../src/adapters/gh-cli';
 import type { EjecutarComando } from '../../src/ports/sincronizar';
 
 describe('obtenerPRs', () => {
@@ -48,5 +48,34 @@ describe('obtenerPRs', () => {
         const prs = obtenerPRs(() => salida);
         expect(prs.map((p) => p.autor)).toEqual(['octocat', undefined, undefined, undefined]);
         expect(prs.filter((p) => 'autor' in p)).toHaveLength(1);
+    });
+});
+
+describe('obtenerAutoresDePR', () => {
+    test('pide los commits del PR y toma el login de cada autor (si no, nombre y email); el resto son coautores', () => {
+        const llamadas: string[][] = [];
+        const salida = JSON.stringify({
+            commits: [
+                {
+                    authors: [
+                        { login: 'octocat', name: 'The Octocat', email: 'o@x.com' },
+                        { login: '', name: 'Bruno', email: 'b@x.com' },
+                    ],
+                },
+                { authors: [{ name: 'Sin Cuenta', email: 's@x.com' }] },
+                { authors: [] },
+                {},
+            ],
+        });
+        const autores = obtenerAutoresDePR((comando, args) => {
+            llamadas.push([comando, ...args]);
+            return salida;
+        }, 12);
+
+        expect(llamadas).toEqual([['gh', 'pr', 'view', '12', '--json', 'commits']]);
+        expect(autores).toEqual([
+            { nombre: 'octocat', email: '', coautores: [{ nombre: 'Bruno', email: 'b@x.com' }] },
+            { nombre: 'Sin Cuenta', email: 's@x.com', coautores: [] },
+        ]);
     });
 });

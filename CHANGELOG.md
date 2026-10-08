@@ -33,8 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   create and on every update. Values come from the commits of the document's
   branches that are not on the base branch (`origin/<TABLERO_RAMA_BASE>`, or
   the local branch; skipped with a warning if neither exists), its `commits`
-  anchors (which cover squash merges), `Co-authored-by` trailers and the
-  authors of its PRs. GitHub login when known (PR author or noreply email),
+  anchors (which cover squash merges), `Co-authored-by` trailers, the
+  authors of its PRs and the commit authors of its merged PRs
+  (`gh pr view <number> --json commits`, one call per merged PR per run). GitHub login when known (PR author or noreply email),
   otherwise the git author name with `.mailmap` applied; bots excluded,
   case-insensitive deduplication, alphabetical order. If the column is
   missing, it is not written and one informational line is printed per

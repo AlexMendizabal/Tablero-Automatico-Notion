@@ -956,6 +956,7 @@ describe('sincronizar — puertos sin adaptadores', () => {
             refRamaBase: () => null,
             autoresDeRango: () => [],
             autoresDeCommit: () => [],
+            autoresDePR: () => [],
         };
         const crearClienteNotion = jest.fn();
         const cargarCredenciales = jest.fn(() => null);

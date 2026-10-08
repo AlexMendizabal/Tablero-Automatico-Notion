@@ -18,8 +18,8 @@ import {
     validarEsquemaEntidad,
 } from '../core/schema';
 import { coincideRama } from '../core/status';
-import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida, RamaConFecha } from '../core/types';
-import type { DependenciasSincronizar } from '../ports/sincronizar';
+import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida, PullRequestInfo, RamaConFecha } from '../core/types';
+import type { DependenciasSincronizar, RepositorioGit } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
     dryRun: boolean;
@@ -280,6 +280,10 @@ export async function sincronizar(
             ? dependencias.credenciales
             : dependencias.configuracion.cargarCredenciales(dependencias.raizRepo);
 
+    // Un "gh pr view" por PR en toda la corrida: Features y Tareas comparten
+    // los autores de los commits de cada PR mergeado.
+    dependencias = { ...dependencias, repositorio: conAutoresDePRCompartidos(dependencias.repositorio) };
+
     const features = await sincronizarEntidad(crearDescriptorFeature(dependencias.ajustes), opciones, {
         ...dependencias,
         credenciales,
@@ -357,11 +361,29 @@ export async function sincronizar(
     return conTareas(tareas);
 }
 
+/** El mismo repositorio, con `autoresDePR` memorizado por número de PR. */
+function conAutoresDePRCompartidos(repositorio: RepositorioGit): RepositorioGit {
+    const porNumero = new Map<number, AutorCommit[]>();
+    return {
+        ...repositorio,
+        autoresDePR: (numero) => {
+            let autores = porNumero.get(numero);
+            if (autores === undefined) {
+                autores = repositorio.autoresDePR(numero);
+                porNumero.set(numero, autores);
+            }
+            return autores;
+        },
+    };
+}
+
 /**
  * Lector de los autores de commits de un documento (fuente de sus
  * contribuyentes): los de cada rama viva que matchea sus `ramas` (local u
- * `origin/`) que no están en la rama base, y los de sus anclas de
- * `commits`. La rama base (`origin/<base>` o, si no existe, la local) se
+ * `origin/`) que no están en la rama base, los de sus anclas de
+ * `commits` y los de los commits de cada PR mergeado que matchea sus
+ * `ramas` (un merge sin squash deja esos commits dentro de la base, donde
+ * `base..rama` ya no los ve). La rama base (`origin/<base>` o, si no existe, la local) se
  * resuelve una sola vez y solo si algún documento tiene ramas vivas; si no
  * existe, los commits de ramas se saltean con un único aviso (no es un
  * error). Cada rama se consulta una sola vez por entidad.
@@ -369,6 +391,7 @@ export async function sincronizar(
 function crearLectorAutores(
     dependencias: DependenciasSincronizar,
     todasLasRamas: RamaConFecha[],
+    todosLosPRs: PullRequestInfo[],
     log: (linea: string) => void,
 ): (documento: DocumentoODD) => AutorCommit[] {
     const { repositorio } = dependencias;
@@ -398,7 +421,11 @@ function crearLectorAutores(
             const base = refBase;
             if (base !== null) for (const rama of ramas) deRamas.push(...autoresDeRama(base, rama.nombre));
         }
-        return [...deRamas, ...documento.commits.flatMap((sha) => repositorio.autoresDeCommit(sha))];
+        const dePRs = todosLosPRs
+            .filter((pr) => pr.state === 'MERGED' && documento.ramas.some((patron) => coincideRama(patron, pr.headRefName)))
+            .sort((a, b) => a.number - b.number)
+            .flatMap((pr) => repositorio.autoresDePR(pr.number));
+        return [...deRamas, ...documento.commits.flatMap((sha) => repositorio.autoresDeCommit(sha)), ...dePRs];
     };
 }
 
@@ -608,7 +635,7 @@ export async function sincronizarEntidad<
     const todasLasRamas = dependencias.repositorio.ramasConFecha();
     const todosLosPRs = dependencias.repositorio.prs();
     const ownerRepo = dependencias.repositorio.ownerRepo();
-    const autoresDeDocumento = crearLectorAutores(dependencias, todasLasRamas, log);
+    const autoresDeDocumento = crearLectorAutores(dependencias, todasLasRamas, todosLosPRs, log);
 
     const filas = documentosValidos.map((documento) =>
         descriptor.construirFila({

@@ -34,6 +34,8 @@ export interface RepositorioGit {
     autoresDeRango(base: string, rama: string): AutorCommit[];
     /** Autor (y coautores) de un commit por hash. */
     autoresDeCommit(sha: string): AutorCommit[];
+    /** Autores (y coautores) de los commits de un PR, según GitHub. */
+    autoresDePR(numero: number): AutorCommit[];
 }
 
 /** Lectura de la configuración del entorno, en el momento de la llamada. */
