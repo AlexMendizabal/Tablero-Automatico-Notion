@@ -363,16 +363,12 @@ export async function sincronizar(
 
 /** El mismo repositorio, con `autoresDePR` memorizado por número de PR. */
 function conAutoresDePRCompartidos(repositorio: RepositorioGit): RepositorioGit {
-    const porNumero = new Map<number, AutorCommit[]>();
+    const porNumero = new Map<number, AutorCommit[] | null>();
     return {
         ...repositorio,
         autoresDePR: (numero) => {
-            let autores = porNumero.get(numero);
-            if (autores === undefined) {
-                autores = repositorio.autoresDePR(numero);
-                porNumero.set(numero, autores);
-            }
-            return autores;
+            if (!porNumero.has(numero)) porNumero.set(numero, repositorio.autoresDePR(numero));
+            return porNumero.get(numero) ?? null;
         },
     };
 }
@@ -386,29 +382,27 @@ function conAutoresDePRCompartidos(repositorio: RepositorioGit): RepositorioGit 
  * `base..rama` ya no los ve). La rama base (`origin/<base>` o, si no existe, la local) se
  * resuelve una sola vez y solo si algún documento tiene ramas vivas; si no
  * existe, los commits de ramas se saltean con un único aviso (no es un
- * error). Cada rama se consulta una sola vez por entidad.
+ * error). Cada rama se consulta una sola vez por entidad. Si alguna fuente
+ * no se pudo leer (git o gh fallaron), devuelve `null`: los contribuyentes
+ * de ese documento quedan desconocidos y no se escriben.
  */
 function crearLectorAutores(
     dependencias: DependenciasSincronizar,
     todasLasRamas: RamaConFecha[],
     todosLosPRs: PullRequestInfo[],
     log: (linea: string) => void,
-): (documento: DocumentoODD) => AutorCommit[] {
+): (documento: DocumentoODD) => AutorCommit[] | null {
     const { repositorio } = dependencias;
     const ramaBase = dependencias.ajustes.ramaBaseDocumento;
     let refBase: string | null | undefined;
-    const porRama = new Map<string, AutorCommit[]>();
-    const autoresDeRama = (base: string, rama: string): AutorCommit[] => {
-        let autores = porRama.get(rama);
-        if (autores === undefined) {
-            autores = repositorio.autoresDeRango(base, rama);
-            porRama.set(rama, autores);
-        }
-        return autores;
+    const porRama = new Map<string, AutorCommit[] | null>();
+    const autoresDeRama = (base: string, rama: string): AutorCommit[] | null => {
+        if (!porRama.has(rama)) porRama.set(rama, repositorio.autoresDeRango(base, rama));
+        return porRama.get(rama) ?? null;
     };
     return (documento) => {
         const ramas = todasLasRamas.filter((r) => documento.ramas.some((patron) => coincideRama(patron, r.nombre)));
-        const deRamas: AutorCommit[] = [];
+        const lecturas: Array<AutorCommit[] | null> = [];
         if (ramas.length > 0) {
             if (refBase === undefined) {
                 refBase = repositorio.refRamaBase(ramaBase);
@@ -419,13 +413,17 @@ function crearLectorAutores(
                 }
             }
             const base = refBase;
-            if (base !== null) for (const rama of ramas) deRamas.push(...autoresDeRama(base, rama.nombre));
+            if (base !== null) for (const rama of ramas) lecturas.push(autoresDeRama(base, rama.nombre));
         }
-        const dePRs = todosLosPRs
+        for (const sha of documento.commits) lecturas.push(repositorio.autoresDeCommit(sha));
+        const prsMergeados = todosLosPRs
             .filter((pr) => pr.state === 'MERGED' && documento.ramas.some((patron) => coincideRama(patron, pr.headRefName)))
-            .sort((a, b) => a.number - b.number)
-            .flatMap((pr) => repositorio.autoresDePR(pr.number));
-        return [...deRamas, ...documento.commits.flatMap((sha) => repositorio.autoresDeCommit(sha)), ...dePRs];
+            .sort((a, b) => a.number - b.number);
+        for (const pr of prsMergeados) lecturas.push(repositorio.autoresDePR(pr.number));
+        // Una sola fuente ilegible vuelve desconocidos a todos: una lista
+        // parcial pisaría en Notion a quienes faltan.
+        if (lecturas.some((autores) => autores === null)) return null;
+        return lecturas.flatMap((autores) => autores ?? []);
     };
 }
 
@@ -637,19 +635,29 @@ export async function sincronizarEntidad<
     const ownerRepo = dependencias.repositorio.ownerRepo();
     const autoresDeDocumento = crearLectorAutores(dependencias, todasLasRamas, todosLosPRs, log);
 
-    const filas = documentosValidos.map((documento) =>
-        descriptor.construirFila({
+    const slugsSinContribuyentes: string[] = [];
+    const filas = documentosValidos.map((documento) => {
+        const autoresCommits = autoresDeDocumento(documento);
+        if (autoresCommits === null) slugsSinContribuyentes.push(documento.slug);
+        return descriptor.construirFila({
             documento,
             todasLasRamas,
             todosLosPRs,
             fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
-            autoresCommits: autoresDeDocumento(documento),
+            autoresCommits,
             fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
             hoy,
             ownerRepo,
             idioma,
-        }),
-    );
+        });
+    });
+    // No es un error (el código no cambia): esas páginas conservan en Notion
+    // los contribuyentes que ya tenían.
+    if (slugsSinContribuyentes.length > 0) {
+        log(
+            `Aviso: no se pudieron leer los contribuyentes de git o gh para: ${slugsSinContribuyentes.join(', ')}. Se conservan los de Notion.`,
+        );
+    }
 
     const resumenSinNotion = (): ResumenSincronizacion => ({
         entidad,

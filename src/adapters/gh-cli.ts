@@ -55,13 +55,14 @@ function identidadDeAutorGitHub(autor: AutorGitHub): Identidad {
 /** Autores de los commits de un PR (`gh pr view <n> --json commits`): por
  *  commit, su primer autor y, como coautores, los demás (GitHub ya resuelve
  *  ahí los trailers `Co-authored-by`). Sirve para los PRs mergeados, cuyos
- *  commits ya no se ven como "rama fuera de la base". Si gh falla, ninguno. */
-export function obtenerAutoresDePR(ejecutar: EjecutarComando, numero: number): AutorCommit[] {
+ *  commits ya no se ven como "rama fuera de la base". Si gh falla o su
+ *  salida no se puede leer, `null` ("no se sabe", distinto de "sin autores"). */
+export function obtenerAutoresDePR(ejecutar: EjecutarComando, numero: number): AutorCommit[] | null {
     let datos: { commits?: Array<{ authors?: AutorGitHub[] }> };
     try {
         datos = JSON.parse(ejecutar('gh', ['pr', 'view', String(numero), '--json', 'commits']) || '{}');
     } catch {
-        return [];
+        return null;
     }
     return (datos.commits ?? []).flatMap((commit) => {
         const [autor, ...coautores] = (commit.authors ?? []).map(identidadDeAutorGitHub);

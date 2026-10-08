@@ -87,6 +87,10 @@ export function crearEjecutarFalso(respuestas: {
      *  uno con sus `authors` tal como los devuelve GitHub. Un PR ausente no
      *  tiene commits. */
     commitsPorPR?: Record<number, AutorGitHubFalso[][]>;
+    /** Ramas cuyo "git log" de autores falla (simula un error transitorio). */
+    fallanRamas?: string[];
+    /** PRs cuyo "gh pr view" falla. */
+    fallanPRs?: number[];
 }): EjecutarComando {
     const ramaBase = respuestas.ramaBase === undefined ? 'origin' : respuestas.ramaBase;
     return (comando: string, args: string[]) => {
@@ -103,8 +107,9 @@ export function crearEjecutarFalso(respuestas: {
             throw new Error(`ejecutar falso: la ref "${ref}" no existe`);
         }
         if (comando === 'git' && args[0] === 'log' && args.includes('--ignore-missing')) {
-            const local = args.find((a) => a.startsWith('refs/heads/')) ?? '';
-            return salidaAutoresGit(respuestas.autoresPorRama?.[local.slice('refs/heads/'.length)] ?? []);
+            const rama = (args.find((a) => a.startsWith('refs/heads/')) ?? '').slice('refs/heads/'.length);
+            if (respuestas.fallanRamas?.includes(rama)) throw new Error(`ejecutar falso: "git log" falló para ${rama}`);
+            return salidaAutoresGit(respuestas.autoresPorRama?.[rama] ?? []);
         }
         if (comando === 'git' && args[0] === 'show' && args.includes(`--format=${FORMATO_AUTORES}`)) {
             return salidaAutoresGit(respuestas.autoresPorCommit?.[args[args.length - 1]] ?? []);
@@ -112,6 +117,9 @@ export function crearEjecutarFalso(respuestas: {
         if (comando === 'git' && args[0] === 'for-each-ref') return respuestas.ramas ?? '';
         if (comando === 'gh' && args[0] === 'pr' && args[1] === 'list') return respuestas.prs ?? '[]';
         if (comando === 'gh' && args[0] === 'pr' && args[1] === 'view') {
+            if (respuestas.fallanPRs?.includes(Number(args[2]))) {
+                throw new Error(`ejecutar falso: "gh pr view ${args[2]}" falló`);
+            }
             const commits = respuestas.commitsPorPR?.[Number(args[2])] ?? [];
             return JSON.stringify({
                 commits: commits.map((authors) => ({ authors, messageHeadline: 'commit', messageBody: '' })),

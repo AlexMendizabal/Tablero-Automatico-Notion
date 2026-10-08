@@ -397,6 +397,9 @@ describe('"Contribuyentes" en Features y Tareas', () => {
             multi_select: [{ name: 'Ana' }, { name: 'octocat' }],
         });
         expect(feature.construirValoresPropiedades(filaBase(), 'en').contribuyentes).toEqual({ multi_select: [] });
+        // Desconocidos (git o gh fallaron): no viajan, así Notion conserva los suyos.
+        expect(feature.construirValoresPropiedades(filaBase({ contribuyentes: null }), 'es')).not.toHaveProperty('contribuyentes');
+        expect(feature.formatearFilaLegible(filaBase({ contribuyentes: null }))).toMatch(/ \| \?$/);
         const tarea = crearDescriptorTarea();
         const { feature: _titulo, ...resto } = filaBase({ contribuyentes: ['Zoe'] });
         const filaTarea = { ...resto, tarea: 'Tarea X', featurePadre: null };

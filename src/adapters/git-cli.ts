@@ -132,19 +132,22 @@ export function obtenerRefRamaBase(ejecutar: EjecutarComando, ramaBase: string):
     return null;
 }
 
-function autoresDe(ejecutar: EjecutarComando, argumentos: string[]): AutorCommit[] {
+/** `null` si git falla: "no se sabe", que el llamador distingue de "sin
+ *  autores" para no pisar en Notion los contribuyentes con una lista
+ *  incompleta. */
+function autoresDe(ejecutar: EjecutarComando, argumentos: string[]): AutorCommit[] | null {
     try {
         return parsearAutoresGit(ejecutar('git', argumentos));
     } catch {
-        return [];
+        return null;
     }
 }
 
 /** Autores de los commits de `rama` (local y/o `origin/`, la que exista)
  *  que no están en `base` (una ref completa, ver `obtenerRefRamaBase`).
  *  `--ignore-missing` saltea la variante de la rama que no existe; si git
- *  falla, ninguno. */
-export function obtenerAutoresDeRango(ejecutar: EjecutarComando, base: string, rama: string): AutorCommit[] {
+ *  falla, `null`. */
+export function obtenerAutoresDeRango(ejecutar: EjecutarComando, base: string, rama: string): AutorCommit[] | null {
     return autoresDe(ejecutar, [
         'log',
         '--ignore-missing',
@@ -157,7 +160,7 @@ export function obtenerAutoresDeRango(ejecutar: EjecutarComando, base: string, r
     ]);
 }
 
-/** Autor (y coautores) de un commit por hash; si git falla, ninguno. */
-export function obtenerAutoresDeCommit(ejecutar: EjecutarComando, sha: string): AutorCommit[] {
+/** Autor (y coautores) de un commit por hash; si git falla, `null`. */
+export function obtenerAutoresDeCommit(ejecutar: EjecutarComando, sha: string): AutorCommit[] | null {
     return autoresDe(ejecutar, ['show', '-s', `--format=${FORMATO_AUTORES}`, sha]);
 }

@@ -73,8 +73,9 @@ export interface FilaTablero {
     documento: string; // URL
     huella: string;
     /** Contribuyentes (logins de GitHub o nombres), ya normalizados y
-     *  ordenados (ver `calcularContribuyentes`). */
-    contribuyentes: string[];
+     *  ordenados (ver `calcularContribuyentes`). `null` si no se pudieron
+     *  leer de git o gh: no se escriben (se conservan los de Notion). */
+    contribuyentes: string[] | null;
 }
 
 export type RichTextArray = Array<{ type: 'text'; text: { content: string } }>;
@@ -91,7 +92,8 @@ export interface ValoresPropiedades {
     diasSinActividad: { number: number };
     actualizado: { date: { start: string } };
     documento: { url: string };
-    contribuyentes: { multi_select: Array<{ name: string }> };
+    /** Ausente si los contribuyentes no se conocen (no se escriben). */
+    contribuyentes?: { multi_select: Array<{ name: string }> };
     huella: { rich_text: RichTextArray };
 }
 
@@ -163,8 +165,9 @@ export interface ParametrosConstruirFila {
     /** Fechas ISO ya resueltas de `documento.commits` (ver `ParametrosActualizado`). */
     fechasCommits?: string[];
     /** Autores de los commits del documento (los de sus ramas que no están
-     *  en la rama base y los de sus anclas de `commits`), ya leídos de git. */
-    autoresCommits?: AutorCommit[];
+     *  en la rama base y los de sus anclas de `commits`), ya leídos de git.
+     *  `null` si alguna fuente no se pudo leer. */
+    autoresCommits?: AutorCommit[] | null;
     fechaDocumento: string | null;
     hoy: Date;
     ownerRepo: string;

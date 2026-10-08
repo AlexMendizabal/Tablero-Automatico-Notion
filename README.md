@@ -436,6 +436,12 @@ and each value is cut to 100 characters. The value is written on create and
 on every update (an empty list if there is nobody). `--dry-run` without
 credentials shows it as the last column of each row (`—` if there is nobody).
 
+If git or gh fail to read any of those sources for a document (for example,
+a transient `gh pr view` error), its contributors are **unknown**: that page
+does not get the column (it keeps the contributors it already had in Notion;
+its other properties are still updated), `--dry-run` shows `?`, and one
+warning per entity lists the affected slugs. The exit code does not change.
+
 Tip: if the same person shows up under two names (or as a name and as a
 login), unify them with a [`.mailmap`](https://git-scm.com/docs/gitmailmap)
 file at the repository root; git applies it to the author name and email the

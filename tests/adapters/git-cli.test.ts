@@ -102,11 +102,12 @@ describe('obtenerAutoresDeRango', () => {
         ]);
     });
 
-    test('si git falla, ninguno', () => {
+    test('si git falla, null (no se sabe), distinto de "sin autores"', () => {
         const { ejecutar } = registrador(() => {
             throw new Error('fatal');
         });
-        expect(obtenerAutoresDeRango(ejecutar, 'refs/heads/main', 'feat/x')).toEqual([]);
+        expect(obtenerAutoresDeRango(ejecutar, 'refs/heads/main', 'feat/x')).toBeNull();
+        expect(obtenerAutoresDeRango(() => '', 'refs/heads/main', 'feat/x')).toEqual([]);
     });
 });
 
@@ -119,11 +120,11 @@ describe('obtenerAutoresDeCommit', () => {
         expect(llamadas).toEqual([['git', 'show', '-s', `--format=${FORMATO_AUTORES}`, 'a'.repeat(40)]]);
     });
 
-    test('si git falla, ninguno', () => {
+    test('si git falla, null (no se sabe)', () => {
         const { ejecutar } = registrador(() => {
             throw new Error('fatal');
         });
-        expect(obtenerAutoresDeCommit(ejecutar, 'a'.repeat(40))).toEqual([]);
+        expect(obtenerAutoresDeCommit(ejecutar, 'a'.repeat(40))).toBeNull();
     });
 });
 

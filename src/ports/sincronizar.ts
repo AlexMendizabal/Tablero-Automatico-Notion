@@ -30,12 +30,14 @@ export interface RepositorioGit {
      *  `null` si no existe ninguna. */
     refRamaBase(ramaBase: string): string | null;
     /** Autores (y coautores) de los commits de `rama` (local u `origin/`)
-     *  que no están en `base` (una ref de `refRamaBase`). */
-    autoresDeRango(base: string, rama: string): AutorCommit[];
+     *  que no están en `base` (una ref de `refRamaBase`). En los tres
+     *  métodos de autores, `null` = no se pudieron leer (git o gh fallaron),
+     *  distinto de `[]` (no hay ninguno). */
+    autoresDeRango(base: string, rama: string): AutorCommit[] | null;
     /** Autor (y coautores) de un commit por hash. */
-    autoresDeCommit(sha: string): AutorCommit[];
+    autoresDeCommit(sha: string): AutorCommit[] | null;
     /** Autores (y coautores) de los commits de un PR, según GitHub. */
-    autoresDePR(numero: number): AutorCommit[];
+    autoresDePR(numero: number): AutorCommit[] | null;
 }
 
 /** Lectura de la configuración del entorno, en el momento de la llamada. */

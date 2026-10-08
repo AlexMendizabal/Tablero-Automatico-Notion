@@ -53,7 +53,7 @@ describe('idioma del tablero — núcleo puro', () => {
         expect(propiedades['Days inactive'].number).toBe(5);
         expect(propiedades.Updated.date.start).toBe('2026-09-01T00:00:00.000Z');
         expect(propiedades.Document.url).toBe('https://github.com/owner/repo/blob/master/odd/tasks/feature-x.md');
-        expect(propiedades.Contributors.multi_select).toEqual([]);
+        expect(propiedades.Contributors?.multi_select).toEqual([]);
         expect(propiedades.Fingerprint.rich_text[0].text.content).toBe('abc123');
     });
 

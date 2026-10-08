@@ -338,3 +338,87 @@ describe('sincronizar — un "gh pr view" por PR en toda la corrida', () => {
         expect(lineas.find((l) => l.startsWith('t '))).toMatch(/ | ana-gh, Coautora, Dana$/);
     });
 });
+
+// ---------------------------------------------------------------------------
+// git o gh no se pudieron leer: se conservan los contribuyentes de Notion
+// ---------------------------------------------------------------------------
+
+describe('sincronizar — contribuyentes desconocidos (git o gh fallaron)', () => {
+    const viejos = { multi_select: [{ name: 'Vieja' }] };
+    const pagina = (id: string, slug: string) => ({
+        id,
+        properties: { ...propiedadesMinimas(slug, 'x'), Contribuyentes: viejos },
+        hijos: [],
+    });
+    const aviso = (slugs: string) =>
+        `Aviso: no se pudieron leer los contribuyentes de git o gh para: ${slugs}. Se conservan los de Notion.`;
+
+    async function correrReal(
+        documentos: Array<{ slug: string; contenido: string }>,
+        opciones: Parameters<typeof crearEjecutarFalso>[0],
+    ) {
+        const features = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const lineas: string[] = [];
+        features.paginas.set('page-a', pagina('page-a', 'a'));
+        features.paginas.set('page-b', pagina('page-b', 'b'));
+        const resumen = await sincronizar({ dryRun: false }, {
+            raizRepo: '/repo',
+            ejecutar: crearEjecutarFalso({ ramas: RAMAS, prs: PRS, autoresPorRama: AUTORES_POR_RAMA, ...opciones }),
+            fetchInyectado: features.fetchFalso,
+            listarDocumentos: () => documentos,
+            credenciales: { token: 'tok', databaseId: features.databaseId },
+            hoy: HOY,
+            log: (l) => lineas.push(l),
+        });
+        const parches = (id: string) =>
+            features.solicitudes
+                .filter((s) => s.metodo === 'PATCH' && s.ruta === `/pages/${id}`)
+                .map((s) => JSON.parse(s.cuerpo).properties as Record<string, unknown>);
+        return { resumen, features, lineas, parches };
+    }
+
+    test('si "git log" de una rama falla, esa página no recibe Contribuyentes (las demás sí) y se avisa una vez', async () => {
+        const { resumen, features, lineas, parches } = await correrReal(
+            [
+                { slug: 'a', contenido: doc('["feat/x-1"]') },
+                { slug: 'b', contenido: doc('["feat/otra"]') },
+            ],
+            { fallanRamas: ['feat/x-1'] },
+        );
+
+        expect(resumen.codigo).toBe(0);
+        expect(resumen.actualizadas).toBe(2);
+        expect(parches('page-a').length).toBeGreaterThan(0);
+        for (const propiedades of parches('page-a')) expect(propiedades).not.toHaveProperty('Contribuyentes');
+        expect(parches('page-a').some((p) => 'Estado' in p)).toBe(true);
+        expect(features.paginas.get('page-a')?.properties.Contribuyentes).toEqual(viejos);
+        expect(features.paginas.get('page-b')?.properties.Contribuyentes).toEqual({ multi_select: [{ name: 'intrusa' }] });
+        expect(lineas.filter((l) => l.startsWith('Aviso: no se pudieron leer los contribuyentes'))).toEqual([aviso('a')]);
+    });
+
+    test('si "gh pr view" de un PR mergeado falla, lo mismo; una página nueva se crea sin Contribuyentes', async () => {
+        const { resumen, features, lineas, parches } = await correrReal(
+            [
+                { slug: 'a', contenido: doc('["feat/viejo-1"]') },
+                { slug: 'nueva', contenido: doc('["feat/viejo-*"]') },
+            ],
+            { ramas: '', prs: PRS_VIEJOS, commitsPorPR: COMMITS_POR_PR, fallanPRs: [3] },
+        );
+
+        expect(resumen.codigo).toBe(0);
+        for (const propiedades of parches('page-a')) expect(propiedades).not.toHaveProperty('Contribuyentes');
+        expect(features.paginas.get('page-a')?.properties.Contribuyentes).toEqual(viejos);
+        const alta = features.solicitudes.find((s) => s.metodo === 'POST' && s.ruta === '/pages');
+        expect(alta && JSON.parse(alta.cuerpo).properties).not.toHaveProperty('Contribuyentes');
+        expect(lineas.filter((l) => l.startsWith('Aviso: no se pudieron leer los contribuyentes'))).toEqual([
+            aviso('a, nueva'),
+        ]);
+    });
+
+    test('"--dry-run" sin credenciales muestra "?" en vez de una lista', async () => {
+        const { lineas } = await correr([{ slug: 'a', contenido: doc('["feat/x-1"]') }], { fallanRamas: ['feat/x-1'] });
+
+        expect(lineas.find((l) => l.startsWith('a '))).toMatch(/ \| \?$/);
+        expect(lineas).toContain(aviso('a'));
+    });
+});

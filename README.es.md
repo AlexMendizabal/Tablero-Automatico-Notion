@@ -447,6 +447,13 @@ a 100 caracteres. El valor se escribe al crear y en cada actualización (una
 lista vacía si no hay nadie). `--dry-run` sin credenciales lo muestra como
 última columna de cada fila (`—` si no hay nadie).
 
+Si git o gh fallan al leer alguna de esas fuentes para un documento (por
+ejemplo, un error transitorio de `gh pr view`), sus contribuyentes quedan
+**desconocidos**: esa página no recibe la columna (conserva en Notion los que
+ya tenía, el resto de sus propiedades se actualiza igual), `--dry-run`
+muestra `?` y se imprime un aviso por entidad con los slugs afectados. El
+código de salida no cambia.
+
 Consejo: si una misma persona aparece con dos nombres (o como nombre y como
 login), unificala con un archivo [`.mailmap`](https://git-scm.com/docs/gitmailmap)
 en la raíz del repositorio; git lo aplica al nombre y al email de autor que

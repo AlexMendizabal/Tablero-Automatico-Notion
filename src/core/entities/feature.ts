@@ -161,7 +161,10 @@ export function construirValoresPropiedades(fila: FilaTablero, idioma: Idioma = 
         diasSinActividad: { number: fila.diasSinActividad },
         actualizado: { date: { start: fila.actualizado } },
         documento: { url: fila.documento },
-        contribuyentes: { multi_select: fila.contribuyentes.map((name) => ({ name })) },
+        // Desconocidos (git o gh fallaron): no se escriben.
+        ...(fila.contribuyentes === null
+            ? {}
+            : { contribuyentes: { multi_select: fila.contribuyentes.map((name) => ({ name })) } }),
         huella: { rich_text: textoRico(fila.huella) },
     };
 }
@@ -243,21 +246,25 @@ export function construirFilaEnCarpeta(
         actualizado,
         documento: `https://github.com/${ownerRepo}/blob/${ramaBaseDocumento}/${carpeta}/${documento.slug}.md`,
         huella: calcularHuella(documento.tareas),
-        contribuyentes: calcularContribuyentes({
-            loginsPrs: [...prsQueMatchean]
-                .sort((a, b) => a.number - b.number)
-                .flatMap((pr) => (pr.autor ? [pr.autor] : [])),
-            commits: parametros.autoresCommits ?? [],
-        }),
+        contribuyentes:
+            parametros.autoresCommits === null
+                ? null
+                : calcularContribuyentes({
+                      loginsPrs: [...prsQueMatchean]
+                          .sort((a, b) => a.number - b.number)
+                          .flatMap((pr) => (pr.autor ? [pr.autor] : [])),
+                      commits: parametros.autoresCommits ?? [],
+                  }),
     };
 }
 
 /** Encabezado de `formatearFilaLegible` ("--dry-run" sin credenciales). */
 export const ENCABEZADO_FILA_LEGIBLE = 'slug | estado | progreso | PRs abiertos | días | actualizado | contribuyentes';
 
-/** Columna de contribuyentes de la forma legible: separados por comas, o
- *  "—" si no hay ninguno. */
-export function contribuyentesLegibles(contribuyentes: readonly string[]): string {
+/** Columna de contribuyentes de la forma legible: separados por comas, "—"
+ *  si no hay ninguno, o "?" si no se pudieron leer. */
+export function contribuyentesLegibles(contribuyentes: readonly string[] | null): string {
+    if (contribuyentes === null) return '?';
     return contribuyentes.length > 0 ? contribuyentes.join(', ') : '—';
 }
 

@@ -39,7 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   otherwise the git author name with `.mailmap` applied; bots excluded,
   case-insensitive deduplication, alphabetical order. If the column is
   missing, it is not written and one informational line is printed per
-  database; with another type it is a schema error.
+  database; with another type it is a schema error. When git or gh cannot be
+  read for a document, its contributors are left unchanged in Notion (the
+  property is not sent) and a warning lists the affected slugs.
 - `--dry-run` without credentials shows the contributors as the last column
   of each row (`—` when there are none).
 

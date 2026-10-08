@@ -79,3 +79,13 @@ describe('obtenerAutoresDePR', () => {
         ]);
     });
 });
+
+test('obtenerAutoresDePR: si gh falla o su salida no es JSON, null (no se sabe)', () => {
+    expect(
+        obtenerAutoresDePR(() => {
+            throw new Error('gh: HTTP 502');
+        }, 1),
+    ).toBeNull();
+    expect(obtenerAutoresDePR(() => 'no es json', 1)).toBeNull();
+    expect(obtenerAutoresDePR(() => '{"commits":[]}', 1)).toEqual([]);
+});

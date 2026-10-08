@@ -81,8 +81,9 @@ export interface ParametrosFilaEntidad<D extends DocumentoODD = DocumentoODD> {
     /** Fechas ISO ya resueltas de `documento.commits`. */
     fechasCommits?: string[];
     /** Autores de los commits del documento (ramas fuera de la base y
-     *  anclas), ya leídos de git: fuente de sus contribuyentes. */
-    autoresCommits?: AutorCommit[];
+     *  anclas), ya leídos de git: fuente de sus contribuyentes. `null` si
+     *  alguna fuente no se pudo leer. */
+    autoresCommits?: AutorCommit[] | null;
     fechaDocumento: string | null;
     hoy: Date;
     ownerRepo: string;
