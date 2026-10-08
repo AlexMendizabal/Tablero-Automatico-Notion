@@ -33,7 +33,7 @@ inputs:
     required: false
     default: ''
   dry-run:
-    description: 'When "true", "1" or "yes" (any letter case), never writes to Notion: prints the computed rows or the read-only plan. Any other value runs the real sync.'
+    description: 'When "true", "1" or "yes" (any letter case), never writes to Notion: prints the computed rows or the read-only plan. "false", "0", "no" or empty run the real sync; any other value fails the step.'
     required: false
     default: 'false'
   features-folder:
@@ -91,8 +91,16 @@ runs:
         if [ -n "$ENTRADA_CARPETA" ]; then export TABLERO_CARPETA="$ENTRADA_CARPETA"; fi
         if [ -n "$ENTRADA_CARPETA_TAREAS" ]; then export TABLERO_CARPETA_TAREAS="$ENTRADA_CARPETA_TAREAS"; fi
         if [ -n "$ENTRADA_RAMA_BASE" ]; then export TABLERO_RAMA_BASE="$ENTRADA_RAMA_BASE"; fi
+        # Falla cerrado: un valor desconocido (ej. "on", "y") corta en vez de
+        # hacer una sincronización real que escribe en Notion.
         argumentos=()
-        case "${ENTRADA_DRY_RUN,,}" in
+        dry_run="$(printf '%s' "$ENTRADA_DRY_RUN" | tr -d '[:space:]')"
+        case "${dry_run,,}" in
           true | 1 | yes) argumentos+=(--dry-run) ;;
+          false | 0 | no | '') ;;
+          *)
+            echo "::error title=dry-run inválido::dry-run debe ser true/1/yes o false/0/no (recibido: \"$ENTRADA_DRY_RUN\")."
+            exit 1
+            ;;
         esac
         node "$ACCION_RUTA/dist/entrypoints/cli.js" "${argumentos[@]}"
