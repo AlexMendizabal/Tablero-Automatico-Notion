@@ -83,9 +83,91 @@ Ideas centrales:
 
 ## Instalación
 
+Hay tres formas de correr la sincronización. Todas leen los documentos del
+repositorio donde corren y necesitan la [base de Notion](#crear-la-base-en-notion)
+y las [variables](#configuración) que se describen más abajo.
+
+### Opción 1: GitHub Action (recomendada)
+
+Agregar un workflow al repositorio que tiene los documentos. La action
+instala y compila la sincronización, y la corre sobre tu checkout:
+
+```yaml
+name: Tablero de Notion
+
+on:
+  push:
+    branches: [main]
+    paths: ['odd/tasks/**', 'odd/tareas/**']
+  schedule:
+    - cron: '0 11 * * *' # diario: "Días sin actividad" cambia con el tiempo
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # obligatorio: anclas, fechas de ramas y contribuyentes necesitan el historial completo
+          persist-credentials: false
+      - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
+        with:
+          notion-token: ${{ secrets.NOTION_TOKEN }}
+          notion-database-id: ${{ secrets.NOTION_TABLERO_DB_ID }}
+          notion-tasks-database-id: ${{ secrets.NOTION_TAREAS_DB_ID }} # opcional
+          board-language: es # opcional, es por defecto
+```
+
+Entradas: `notion-token` y `notion-database-id` (obligatorias);
+`notion-tasks-database-id`, `board-language`, `dry-run` (`true` nunca
+escribe en Notion; sirve en `pull_request` para validar los documentos sin
+secrets), `features-folder`, `tasks-folder` y `base-branch` (opcionales;
+corresponden a `TABLERO_CARPETA`, `TABLERO_CARPETA_TAREAS` y
+`TABLERO_RAMA_BASE`, y solo se definen si no están vacías). La action le pasa
+a `gh` el `github.token` del workflow, así que el job necesita
+`pull-requests: read`. El checkout **tiene que** usar `fetch-depth: 0`.
+
+### Opción 2: npm / npx
+
+El paquete es `tablero-automatico-notion`; su comando es `tablero-notion`.
+Desde la raíz del repositorio:
+
+```bash
+npx tablero-automatico-notion --dry-run   # una corrida suelta, sin escribir en Notion
+```
+
+O instalarlo como dependencia de desarrollo y llamar al comando por su
+nombre:
+
+```bash
+npm install --save-dev tablero-automatico-notion
+npx tablero-notion --dry-run
+npx tablero-notion            # sincronización real
+```
+
+Lee el `.env` del directorio actual, así que hay que correrlo desde la raíz
+del repositorio. `git` y un `gh` autenticado tienen que estar en el `PATH`.
+
+### Opción 3: desde un clon de este repositorio
+
 ```bash
 npm ci
+npm run sync:dry
 ```
+
+### Tareas avanzadas en resumen
+
+Las tareas son opcionales. Para sincronizarlas: escribir los documentos de
+tareas en `odd/tareas/` (mismo formato más `feature: "<slug-de-la-feature>"`),
+crear una segunda base de Notion con las [columnas de tareas](#tareas-avanzadas-opcional),
+compartirla con la integración y definir `NOTION_TAREAS_DB_ID` (la entrada
+`notion-tasks-database-id` en la action). Sin ella, las tareas se validan
+igual, pero no se escriben.
 
 ## Crear la base en Notion
 
@@ -218,7 +300,7 @@ El workflow `.github/workflows/sync-tablero-notion.yml` corre en cuatro
 disparadores:
 
 1. **`push`** a la rama base, cuando cambia algo relevante (un documento en
-   `odd/tasks/`, el propio script, el workflow, o `package.json`/
+   `odd/tasks/` u `odd/tareas/`, el propio script, el workflow, o `package.json`/
    `package-lock.json`): sincroniza de verdad.
 2. **`pull_request`** sobre esos mismos caminos: solo valida el formato de
    los documentos (`sync:dry`, sin credenciales), para cortar con un PR en
@@ -230,8 +312,8 @@ disparadores:
 4. **`workflow_dispatch`**: para forzar una corrida manual.
 
 Necesita dos secrets configurados en el repositorio (**Settings → Secrets
-and variables → Actions**): `NOTION_TOKEN` y `NOTION_TABLERO_DB_ID`. Si
-faltan, el job de sincronización corta en segundos con un error explícito,
+and variables → Actions**): `NOTION_TOKEN` y `NOTION_TABLERO_DB_ID` (más `NOTION_TAREAS_DB_ID`, opcional, para las
+tareas). Si faltan los dos primeros, el job de sincronización corta en segundos con un error explícito,
 antes de instalar nada, y nunca informa un éxito que en realidad no escribió
 nada.
 
@@ -240,8 +322,8 @@ Para un tablero en inglés, se agrega en esa misma página, en la pestaña
 `BOARD_LANGUAGE` con el valor `en`. Si no está definida, el workflow usa
 `es`.
 
-Aparte, el workflow `.github/workflows/ci.yml` ejecuta `npm run typecheck` y
-`npm test` en cada push a `main` y en cada pull request. No necesita
+Aparte, el workflow `.github/workflows/ci.yml` ejecuta `npm run typecheck`,
+`npm run build` y `npm test` en cada push a `main` y en cada pull request. No necesita
 credenciales.
 
 ## Contrato del formato del documento
@@ -467,6 +549,38 @@ ana-gh <ana@ejemplo.com> Ana Pérez <ana@personal.com>
 (la primera línea cambia el nombre de los commits hechos con
 `ana@ejemplo.com`; la segunda, el nombre y el email de los hechos como
 `Ana Pérez <ana@personal.com>`).
+
+## Skill para agentes
+
+El paquete incluye una skill para agentes en `skill/SKILL.md` (también en
+este repositorio) que le enseña a un agente de IA el contrato de los
+documentos: dónde viven los documentos de features y de tareas, las reglas
+del frontmatter, el formato de cada línea de tarea, cómo se derivan el
+estado y los contribuyentes, y cómo validar con `--dry-run`. Copiar la
+carpeta `skill/` en el directorio de skills del agente (por ejemplo
+`.claude/skills/tablero-odd-documents/` o
+`~/.claude/skills/tablero-odd-documents/`), o indicarle al agente el archivo
+`node_modules/tablero-automatico-notion/skill/SKILL.md`.
+
+## Actualizar desde v1
+
+- **Ruta del script**: el script único `src/sync-tablero-features.ts` ahora
+  es `src/entrypoints/cli.ts`. `npm run sync` y `npm run sync:dry` siguen
+  funcionando; actualizar cualquier workflow o script que llamara al archivo
+  viejo directamente, o pasar a la [GitHub Action](#opción-1-github-action-recomendada)
+  o al comando `tablero-notion`.
+- **Columnas opcionales nuevas**: `Contribuyentes` (`Contributors`) en la
+  base de Features (multi-select). Sin ella, la sincronización imprime una
+  línea informativa y la saltea (y no lee sus fuentes); los tableros
+  existentes siguen funcionando sin cambios.
+- **Base opcional nueva**: Tareas, con `Feature` (relación), `Responsable`
+  (`Assignee`, persona) y `Contribuyentes` (ver
+  [Tareas avanzadas](#tareas-avanzadas-opcional)).
+- **Variables de entorno nuevas**: `NOTION_TAREAS_DB_ID` y
+  `TABLERO_CARPETA_TAREAS` (las dos opcionales). Un `TABLERO_CARPETA_TAREAS`
+  definido vacío, o igual a `TABLERO_CARPETA`, es un error de configuración.
+- **Workflow**: agregar `odd/tareas/**` a sus filtros `paths` y, si se usan
+  tareas, pasar `NOTION_TAREAS_DB_ID` como secret.
 
 ## Límites conocidos
 
