@@ -33,6 +33,44 @@ describe('esInvocacionDirecta', () => {
     ])('NO reconoce "%s"', (ruta) => {
         expect(esInvocacionDirecta(ruta)).toBe(false);
     });
+
+    describe('instalada como paquete (bin "tablero-notion")', () => {
+        const ARCHIVO = '/proyecto/node_modules/tablero-automatico-notion/dist/entrypoints/cli.js';
+        /** `realpath` falso: el enlace de `.bin` (o el de npx) apunta al CLI compilado. */
+        const resolverRuta = (ruta: string) => {
+            const enlaces: Record<string, string> = {
+                '/proyecto/node_modules/.bin/tablero-notion': ARCHIVO,
+                '/home/u/.npm/_npx/abc/node_modules/.bin/tablero-notion': ARCHIVO,
+            };
+            if (ruta in enlaces) return enlaces[ruta];
+            if (ruta === ARCHIVO || ruta.startsWith('/repo/')) return ruta;
+            throw new Error(`ENOENT: ${ruta}`);
+        };
+
+        test.each([
+            '/proyecto/node_modules/.bin/tablero-notion',
+            '/home/u/.npm/_npx/abc/node_modules/.bin/tablero-notion',
+        ])('reconoce el enlace "%s" que resuelve a este archivo', (ruta) => {
+            expect(esInvocacionDirecta(ruta, { archivoActual: ARCHIVO, resolverRuta })).toBe(true);
+        });
+
+        test('sigue reconociendo la ruta directa al CLI compilado', () => {
+            expect(esInvocacionDirecta(ARCHIVO, { archivoActual: ARCHIVO, resolverRuta })).toBe(true);
+        });
+
+        test.each([
+            '/repo/node_modules/.bin/jest',
+            '/no/existe/tablero-notion',
+            '',
+            undefined,
+        ])('NO reconoce "%s" (otro archivo o ruta irresoluble)', (ruta) => {
+            expect(esInvocacionDirecta(ruta, { archivoActual: ARCHIVO, resolverRuta })).toBe(false);
+        });
+
+        test('sin resolvedor inyectado usa el realpath real: el worker de Jest no es este archivo', () => {
+            expect(esInvocacionDirecta(process.argv[1], { archivoActual: __filename })).toBe(false);
+        });
+    });
 });
 
 describe('AYUDA', () => {

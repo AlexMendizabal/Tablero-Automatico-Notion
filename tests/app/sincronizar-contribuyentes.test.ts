@@ -450,3 +450,96 @@ describe('sincronizarEntidad — ancla de "commits" inexistente', () => {
         expect(lineas.some((l) => l.startsWith('Aviso: no se pudieron leer los contribuyentes'))).toBe(false);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Sin la columna en la base: no se leen las fuentes de contribuyentes
+// ---------------------------------------------------------------------------
+
+describe('sincronizar — sin la columna "Contribuyentes" no se leen sus fuentes', () => {
+    const PRS_MEZCLADOS = JSON.stringify([...JSON.parse(PRS), ...JSON.parse(PRS_VIEJOS)]);
+    const lecturasDeAutoresGit = (llamadas: string[][]) =>
+        llamadas.filter(
+            (a) =>
+                a.includes(`--format=${FORMATO_AUTORES}`) || (a[0] === 'rev-parse' && a[1] === '--verify'),
+        );
+
+    function escenario(esquemas: Parameters<typeof escenarioNotion>[1]) {
+        const base = escenarioNotion('es', esquemas);
+        const registro = conRegistro(
+            crearEjecutarFalso({
+                ramas: RAMAS,
+                prs: PRS_MEZCLADOS,
+                autoresPorRama: AUTORES_POR_RAMA,
+                commitsPorPR: COMMITS_POR_PR,
+                commits: { [SHA]: '2026-07-01T00:00:00Z' },
+                autoresPorCommit: { [SHA]: [autorCommit('Carla', 'c@x.com')] },
+            }),
+        );
+        const entrada = {
+            ...base.entrada,
+            ejecutar: registro.ejecutar,
+            listarDocumentos: () => [{ slug: 'padre', contenido: doc('["feat/x-1", "feat/viejo-1"]', [SHA]) }],
+            listarDocumentosTareas: () => [{ slug: 'tarea-x', contenido: doc('["feat/viejo-*"]') }],
+        };
+        return { ...base, ...registro, entrada };
+    }
+
+    test('sin la columna en ninguna base: cero "gh pr view", cero lecturas de autores en git y sin aviso', async () => {
+        const { entrada, llamadas, llamadasGh, lineas } = escenario({
+            features: sin(ESQUEMA_CORRECTO_NOTION, 'Contribuyentes'),
+            tareas: sin(ESQUEMA_CORRECTO_NOTION_TAREAS, 'Contribuyentes'),
+        });
+
+        const resumen = await sincronizar({ dryRun: false }, entrada);
+
+        expect(resumen.codigo).toBe(0);
+        expect(vistas(llamadasGh)).toEqual([]);
+        expect(lecturasDeAutoresGit(llamadas)).toEqual([]);
+        expect(lineas.some((l) => l.startsWith('Aviso: no se pudieron leer los contribuyentes'))).toBe(false);
+    });
+
+    test('sin la columna solo en Features: las Tareas sí las leen', async () => {
+        const { entrada, llamadasGh } = escenario({ features: sin(ESQUEMA_CORRECTO_NOTION, 'Contribuyentes') });
+
+        await sincronizar({ dryRun: false }, entrada);
+
+        expect(vistas(llamadasGh)).toEqual(['3']);
+    });
+
+    test('con la columna en las dos bases, se leen como siempre', async () => {
+        const { entrada, llamadas, llamadasGh } = escenario({});
+
+        const resumen = await sincronizar({ dryRun: false }, entrada);
+
+        expect(resumen.codigo).toBe(0);
+        expect(vistas(llamadasGh)).toEqual(['1', '3']);
+        expect(lecturasDeAutoresGit(llamadas).length).toBeGreaterThan(0);
+    });
+});
+
+describe('sincronizar — Tareas que omiten Notion (sin NOTION_TAREAS_DB_ID)', () => {
+    test('no leen las fuentes de contribuyentes de sus documentos, pero los validan igual', async () => {
+        const { entrada: base, features } = escenarioNotion('es');
+        const { ejecutar, llamadas, llamadasGh } = conRegistro(
+            crearEjecutarFalso({ ramas: RAMAS, prs: PRS_VIEJOS, autoresPorRama: AUTORES_POR_RAMA, commitsPorPR: COMMITS_POR_PR }),
+        );
+        const lineas: string[] = [];
+
+        const resumen = await sincronizar({ dryRun: false }, {
+            ...base,
+            ejecutar,
+            log: (l) => lineas.push(l),
+            credenciales: { token: 'tok', databaseId: features.databaseId },
+            listarDocumentos: () => [{ slug: 'padre', contenido: doc('["feat/nada"]') }],
+            listarDocumentosTareas: () => [
+                { slug: 'tarea-x', contenido: doc('["feat/viejo-1", "feat/x-1"]') },
+                { slug: 'tarea-rota', contenido: '# sin frontmatter' },
+            ],
+        });
+
+        expect(vistas(llamadasGh)).toEqual([]);
+        expect(llamadas.filter((a) => a.includes(`--format=${FORMATO_AUTORES}`))).toEqual([]);
+        expect(resumen.tareas?.erroresDeFormato.map((e) => e.slug)).toEqual(['tarea-rota']);
+        expect(resumen.codigo).toBe(1);
+    });
+});

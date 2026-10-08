@@ -1,9 +1,19 @@
 {
   "name": "tablero-automatico-notion",
-  "version": "1.1.0",
-  "private": true,
+  "version": "2.0.0",
   "type": "commonjs",
-  "description": "Sincroniza el estado de tus features (documentos ODD en odd/tasks/*.md) hacia un tablero de Notion.",
+  "description": "Sync the status of your features and tasks (ODD documents in odd/tasks/*.md and odd/tareas/*.md) to a Notion board.",
+  "bin": {
+    "tablero-notion": "dist/entrypoints/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.es.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "skill"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -26,20 +36,22 @@
     "node": ">=22"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "sync": "tsx src/entrypoints/cli.ts",
     "sync:dry": "tsx src/entrypoints/cli.ts --dry-run",
     "test": "jest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "dotenv": "^18.0.5",
-    "tsx": "^4.19.2"
+    "dotenv": "^18.0.5"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.2",
     "jest": "^30.0.0",
     "ts-jest": "^29.4.14",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

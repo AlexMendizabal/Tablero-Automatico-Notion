@@ -13,18 +13,22 @@ on:
     branches: [main]
     paths:
       - 'odd/tasks/**'
+      - 'odd/tareas/**'
       - 'src/**'
       # Un cambio en el propio pipeline también tiene que pasar por él.
       - '.github/workflows/sync-tablero-notion.yml'
       - 'package.json'
       - 'package-lock.json'
+      - 'action.yml'
   pull_request:
     paths:
       - 'odd/tasks/**'
+      - 'odd/tareas/**'
       - 'src/**'
       - '.github/workflows/sync-tablero-notion.yml'
       - 'package.json'
       - 'package-lock.json'
+      - 'action.yml'
   schedule:
     # 11:00 UTC = 07:00 en Bolivia (UTC-4).
     - cron: '0 11 * * *'
@@ -101,4 +105,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_TABLERO_DB_ID: ${{ secrets.NOTION_TABLERO_DB_ID }}
+          # Opcional: un NOTION_TAREAS_DB_ID vacío (secret sin definir) equivale
+          # a "sin configurar": las Tareas se validan pero no se escriben en
+          # Notion. No vale para toda variable: un TABLERO_CARPETA_TAREAS vacío
+          # es un error de configuración (por eso action.yml nunca exporta
+          # opcionales vacías).
+          NOTION_TAREAS_DB_ID: ${{ secrets.NOTION_TAREAS_DB_ID }}
           BOARD_LANGUAGE: ${{ vars.BOARD_LANGUAGE }}

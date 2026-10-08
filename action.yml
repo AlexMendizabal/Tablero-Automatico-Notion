@@ -1,0 +1,117 @@
+# GitHub Action: sincroniza los documentos ODD del repositorio que la usa
+# (odd/tasks/*.md y, si existen, odd/tareas/*.md) con un tablero de Notion.
+#
+# El repositorio que la llama debe hacer antes "actions/checkout" con
+# "fetch-depth: 0": las anclas "commits", las fechas de las ramas y los
+# contribuyentes no existen en un clon superficial.
+#
+# Endurecimiento: ningún input se interpola con una expresión dentro de un "run:";
+# todos viajan por "env:" y el script los lee como variables de entorno.
+
+name: 'Tablero Automatico Notion'
+description: 'Sync your ODD feature and task documents (odd/tasks, odd/tareas) to a Notion board. Sets up Node 22 in the calling job.'
+author: 'AlexMendizabal'
+branding:
+  icon: 'check-square'
+  color: 'gray-dark'
+
+inputs:
+  notion-token:
+    description: 'Notion integration token (NOTION_TOKEN). Store it as a secret. Required for a real sync; may be omitted with dry-run.'
+    required: false
+    default: ''
+  notion-database-id:
+    description: 'ID or URL of the Notion Features database (NOTION_TABLERO_DB_ID). Required for a real sync; may be omitted with dry-run.'
+    required: false
+    default: ''
+  notion-tasks-database-id:
+    description: 'ID or URL of the Notion Tasks database (NOTION_TAREAS_DB_ID). Without it, tasks are validated but not written.'
+    required: false
+    default: ''
+  board-language:
+    description: 'Language of the Notion board columns and statuses: "es" (default) or "en" (BOARD_LANGUAGE).'
+    required: false
+    default: ''
+  dry-run:
+    description: 'When "true", "1" or "yes" (any letter case), never writes to Notion: prints the computed rows or the read-only plan. "false", "0", "no" or empty run the real sync; any other value fails the step.'
+    required: false
+    default: 'false'
+  features-folder:
+    description: 'Folder of the feature documents (TABLERO_CARPETA). Default: odd/tasks.'
+    required: false
+    default: ''
+  tasks-folder:
+    description: 'Folder of the task documents (TABLERO_CARPETA_TAREAS). Default: odd/tareas.'
+    required: false
+    default: ''
+  base-branch:
+    description: 'Base branch used for document links and contributor ranges (TABLERO_RAMA_BASE). Default: main.'
+    required: false
+    default: ''
+
+outputs:
+  failure-reason:
+    description: 'Set when the action fails before running the sync: "invalid-dry-run" or "classifier-error". Empty otherwise.'
+    value: ${{ steps.sincronizar.outputs.failure-reason }}
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 22
+
+    - name: Build tablero-notion
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      # --include=dev: the build needs typescript (a devDependency) even when
+      # the calling job sets NODE_ENV=production.
+      run: |
+        npm ci --ignore-scripts --no-audit --no-fund --include=dev
+        npm run build
+
+    - name: Sync with Notion
+      id: sincronizar
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ACCION_RUTA: ${{ github.action_path }}
+        ENTRADA_NOTION_TOKEN: ${{ inputs.notion-token }}
+        ENTRADA_TABLERO_DB_ID: ${{ inputs.notion-database-id }}
+        ENTRADA_TAREAS_DB_ID: ${{ inputs.notion-tasks-database-id }}
+        ENTRADA_BOARD_LANGUAGE: ${{ inputs.board-language }}
+        ENTRADA_DRY_RUN: ${{ inputs.dry-run }}
+        ENTRADA_CARPETA: ${{ inputs.features-folder }}
+        ENTRADA_CARPETA_TAREAS: ${{ inputs.tasks-folder }}
+        ENTRADA_RAMA_BASE: ${{ inputs.base-branch }}
+      run: |
+        # Regla: ninguna variable se exporta vacía. Un NOTION_TAREAS_DB_ID
+        # vacío equivale a "sin configurar", pero un TABLERO_CARPETA_TAREAS
+        # vacío es un error de configuración; y una variable vacía ya
+        # definida impide que el .env del repositorio la complete.
+        if [ -n "$ENTRADA_NOTION_TOKEN" ]; then export NOTION_TOKEN="$ENTRADA_NOTION_TOKEN"; fi
+        if [ -n "$ENTRADA_TABLERO_DB_ID" ]; then export NOTION_TABLERO_DB_ID="$ENTRADA_TABLERO_DB_ID"; fi
+        if [ -n "$ENTRADA_TAREAS_DB_ID" ]; then export NOTION_TAREAS_DB_ID="$ENTRADA_TAREAS_DB_ID"; fi
+        if [ -n "$ENTRADA_BOARD_LANGUAGE" ]; then export BOARD_LANGUAGE="$ENTRADA_BOARD_LANGUAGE"; fi
+        if [ -n "$ENTRADA_CARPETA" ]; then export TABLERO_CARPETA="$ENTRADA_CARPETA"; fi
+        if [ -n "$ENTRADA_CARPETA_TAREAS" ]; then export TABLERO_CARPETA_TAREAS="$ENTRADA_CARPETA_TAREAS"; fi
+        if [ -n "$ENTRADA_RAMA_BASE" ]; then export TABLERO_RAMA_BASE="$ENTRADA_RAMA_BASE"; fi
+        # Falla cerrado: un valor desconocido (ej. "on", "y") corta en vez de
+        # hacer una sincronización real que escribe en Notion.
+        # La clasificación vive en scripts/dry-run-flag.sh; CI prueba el script
+        # y también esta conexión (el output failure-reason del paso).
+        estado=0
+        bandera="$(bash "$ACCION_RUTA/scripts/dry-run-flag.sh" "$ENTRADA_DRY_RUN")" || estado=$?
+        if [ "$estado" -eq 2 ]; then
+          echo "failure-reason=invalid-dry-run" >> "$GITHUB_OUTPUT"
+          echo "::error title=dry-run inválido::dry-run debe ser true/1/yes o false/0/no."
+          exit 1
+        elif [ "$estado" -ne 0 ]; then
+          echo "failure-reason=classifier-error" >> "$GITHUB_OUTPUT"
+          echo "::error title=Error interno de la Action::no se pudo ejecutar scripts/dry-run-flag.sh (código $estado)."
+          exit 1
+        fi
+        argumentos=()
+        if [ -n "$bandera" ]; then argumentos+=("$bandera"); fi
+        node "$ACCION_RUTA/dist/entrypoints/cli.js" "${argumentos[@]}"

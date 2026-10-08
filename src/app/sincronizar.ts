@@ -635,29 +635,40 @@ export async function sincronizarEntidad<
     const ownerRepo = dependencias.repositorio.ownerRepo();
     const autoresDeDocumento = crearLectorAutores(dependencias, todasLasRamas, todosLosPRs, log);
 
-    const slugsSinContribuyentes: string[] = [];
-    const filas = documentosValidos.map((documento) => {
-        const autoresCommits = autoresDeDocumento(documento);
-        if (autoresCommits === null) slugsSinContribuyentes.push(documento.slug);
-        return descriptor.construirFila({
-            documento,
-            todasLasRamas,
-            todosLosPRs,
-            fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
-            autoresCommits,
-            fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
-            hoy,
-            ownerRepo,
-            idioma,
+    // Las filas se arman recién cuando se sabe si hacen falta los
+    // contribuyentes: sin la columna en la base (se conoce al leer el
+    // esquema) no se consultan sus fuentes (git log/show, gh pr view) y la
+    // fila los deja desconocidos, que de todos modos no se escriben. Sin
+    // consultar Notion no se sabe si la columna existe: se leen solo si se
+    // muestran (dry-run sin credenciales), nunca para una entidad que omite
+    // Notion y descarta sus filas.
+    const claveContribuyentes = descriptor.claveContribuyentes;
+    const calcularFilas = (leerContribuyentes: boolean): F[] => {
+        const slugsSinContribuyentes: string[] = [];
+        const filasCalculadas = documentosValidos.map((documento) => {
+            const autoresCommits = leerContribuyentes ? autoresDeDocumento(documento) : null;
+            if (leerContribuyentes && autoresCommits === null) slugsSinContribuyentes.push(documento.slug);
+            return descriptor.construirFila({
+                documento,
+                todasLasRamas,
+                todosLosPRs,
+                fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
+                autoresCommits,
+                fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
+                hoy,
+                ownerRepo,
+                idioma,
+            });
         });
-    });
-    // No es un error (el código no cambia): esas páginas conservan en Notion
-    // los contribuyentes que ya tenían.
-    if (slugsSinContribuyentes.length > 0) {
-        log(
-            `Aviso: no se pudieron leer los contribuyentes de git o gh para: ${slugsSinContribuyentes.join(', ')}. Se conservan los de Notion.`,
-        );
-    }
+        // No es un error (el código no cambia): esas páginas conservan en Notion
+        // los contribuyentes que ya tenían.
+        if (slugsSinContribuyentes.length > 0) {
+            log(
+                `Aviso: no se pudieron leer los contribuyentes de git o gh para: ${slugsSinContribuyentes.join(', ')}. Se conservan los de Notion.`,
+            );
+        }
+        return filasCalculadas;
+    };
 
     const resumenSinNotion = (): ResumenSincronizacion => ({
         entidad,
@@ -671,9 +682,14 @@ export async function sincronizarEntidad<
     });
 
     // Validado todo lo que no depende de Notion: sin escribir (ni leer) nada.
-    if (contexto.omitirNotion) return cerrar(resumenSinNotion());
+    if (contexto.omitirNotion) {
+        // Solo por los avisos de los documentos: las filas se descartan.
+        calcularFilas(false);
+        return cerrar(resumenSinNotion());
+    }
 
     if (!credenciales) {
+        const filas = calcularFilas(claveContribuyentes !== undefined);
         log('--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:');
         log(descriptor.encabezadoFilaLegible);
         for (const fila of filas) log(descriptor.formatearFilaLegible(fila));
@@ -725,6 +741,7 @@ export async function sincronizarEntidad<
     }
     const traducir = (valores: Partial<Record<C, unknown>>) =>
         traducirPropiedadesEntidad(descriptor, valores, idioma, omitidas);
+    const filas = calcularFilas(claveContribuyentes !== undefined && !omitidas.includes(claveContribuyentes));
 
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
     const paginasExistentesCrudas = paginasNotion.map((pagina) =>

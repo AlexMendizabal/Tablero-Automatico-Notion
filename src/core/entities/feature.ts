@@ -127,6 +127,7 @@ export const ESQUEMA_FEATURE: EsquemaEntidad<ClavePropiedad, Estado> = {
     // Contribuyentes se agregó con tableros ya en uso: si la base no tiene
     // la columna, no se escribe (ver `propiedadesOpcionalesAusentes`).
     propiedadesOpcionales: ['contribuyentes'],
+    claveContribuyentes: 'contribuyentes',
     textos: TEXTOS_POR_IDIOMA,
 };
 

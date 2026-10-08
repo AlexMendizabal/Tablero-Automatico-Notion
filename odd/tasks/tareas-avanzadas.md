@@ -32,7 +32,8 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - PR 1b: #9 (refactor/entity-descriptor → main), mergeado.
 - PR 2: #10 (feat/task-entity → main), mergeado. Fix de CI 0602e74: los tests aíslan GITHUB_REPOSITORY.
 - PR 3: #11 (feat/task-relation → main), mergeado.
-- PR 4: rama feat/contribuyentes desde main.
+- PR 4: #12 (feat/contribuyentes → main), mergeado.
+- PR 5: rama release/v2.0.0 desde main.
 
 ## Progreso
 
@@ -51,8 +52,12 @@ Además de Features, sincronizar tareas avanzadas que nacen en el repo, con su a
 - Seguimientos de T4: resueltos en T5 (comparación de carpetas con mayúsculas, ".." y rutas absolutas; test de página vinculada con slugs duplicados).
 - T5: ruta delegada (escritor único). 14 commits e1644f5..d886a9a; tests 296 → 409 (también con GITHUB_REPOSITORY y BOARD_LANGUAGE=en). Contribuyentes desde ramas vivas (base..rama), commits ancla, Co-authored-by, autor de cada PR y autores de los commits de cada PR mergeado (decisión del usuario: opción 2, una llamada gh pr view por PR mergeado y por corrida). Columna opcional: si falta, se informa y no se escribe. Si git o gh fallan para un documento, se conservan los contribuyentes de Notion (no se envía la propiedad) y se avisa.
 - Revisión T5: tramos y conjunto aprobados. La revisión del conjunto hasta 6ba6ead quedó aprobada sin confirmación porque la rama avanzó durante la revisión; los commits posteriores se revisaron y confirmaron aparte.
-- Seguimientos para T6 (no bloqueantes): la validación de forma de gh pr view es todo-o-nada (un commit sin authors deja el PR como desconocido; elección conservadora).
+- Seguimientos de T5: resueltos en T6 (no se leen fuentes de contribuyentes si falta la columna o si la entidad no escribe en Notion).
+- T6 (preparación): ruta delegada (escritor único). Commits 79b1ff2..f45811c: build a dist/ con bin tablero-notion, action.yml compuesta (inputs por env, dry-run true/1/yes, credenciales exportadas solo si tienen valor, npm ci --include=dev), CI con build, prueba del CLI compilado y job que usa la Action, skill/SKILL.md, README es/en con instalación y "Upgrading from v1", CHANGELOG 2.0.0. Tests 409 → 421. npm pack --dry-run: 29 archivos (dist, READMEs, LICENSE, CHANGELOG, package.json, skill). El nombre tablero-automatico-notion está libre en npm.
+- Revisión T6: revisiones de 4 lentes (riesgo, resiliencia, legibilidad, confiabilidad), todas aprobadas y confirmadas; sus hallazgos se aplicaron en el PR #13: dry-run falla cerrado ante valores desconocidos (scripts/dry-run-flag.sh, sin imprimir el valor crudo), output failure-reason, y CI que prueba el clasificador (9 valores) y la Action de punta a punta.
+- Seguimientos (no bloqueantes): documentar el código de salida 2 como contrato del clasificador; failure-reason no cubre fallas de instalación/build; sin test de la rama classifier-error; sin prueba en CI del bin enlazado (npx/.bin).
+- Pendiente para cerrar T6 (decisión del usuario): publicar en npm y crear el tag/release v2.0.0 (y el tag móvil v2 para la Action). Hasta entonces, las instrucciones de instalación del README describen la versión por publicar.
 
 ## Próximo paso
 
-- PR 4 en revisión; luego T6 (distribución pública: action.yml, npm, skill, CI, v2.0.0) en una rama desde main. Publicar en npm requiere confirmación explícita del usuario.
+- Merge del PR 5; después, con confirmación del usuario: tag v2.0.0 + v2, release y npm publish. Luego QA1 con bases de Notion de prueba.

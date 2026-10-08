@@ -58,6 +58,10 @@ export interface EsquemaEntidad<C extends string = string, E extends string = st
      *  tiene que tener el tipo esperado; si falta, no es un error de esquema
      *  — la sincronización no la escribe e informa una sola línea. */
     propiedadesOpcionales: readonly C[];
+    /** Clave de la propiedad de contribuyentes, si la entidad la tiene: sin
+     *  esa columna en la base (o sin consultar Notion para escribirla) sus
+     *  fuentes (git log/show, gh pr view) ni se consultan. */
+    claveContribuyentes?: C;
     textos: Readonly<Record<Idioma, TextosEntidad<C, E>>>;
 }
 

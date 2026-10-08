@@ -82,9 +82,95 @@ Core ideas:
 
 ## Installation
 
+Pick one of three ways to run the sync. All of them read the documents of
+the repository they run in and need the [Notion database](#create-the-notion-database)
+and the [variables](#configuration) described below.
+
+### Option 1: GitHub Action (recommended)
+
+Add a workflow to the repository that holds your documents. The action
+installs and builds the sync, then runs it from your checkout:
+
+```yaml
+name: Notion board
+
+on:
+  push:
+    branches: [main]
+    paths: ['odd/tasks/**', 'odd/tareas/**']
+  schedule:
+    - cron: '0 11 * * *' # daily: "Days inactive" changes with time
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # required: anchors, branch dates and contributors need full history
+          persist-credentials: false
+      - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
+        with:
+          notion-token: ${{ secrets.NOTION_TOKEN }}
+          notion-database-id: ${{ secrets.NOTION_TABLERO_DB_ID }}
+          notion-tasks-database-id: ${{ secrets.NOTION_TAREAS_DB_ID }} # optional
+          board-language: en # optional, default es
+```
+
+Inputs: `notion-token` and `notion-database-id` (required for a real
+sync; without them a run without `dry-run` fails with a clear error);
+`notion-tasks-database-id`, `board-language`, `dry-run` (`true` never writes
+to Notion; useful on `pull_request` to validate documents without secrets),
+`features-folder`, `tasks-folder` and `base-branch` (optional; they map to
+`TABLERO_CARPETA`, `TABLERO_CARPETA_TAREAS` and `TABLERO_RAMA_BASE`, and are
+only set when non-empty). The action passes the workflow's `github.token` to
+`gh`, so the job needs `pull-requests: read`. The checkout **must** use
+`fetch-depth: 0`.
+
+> The action runs `actions/setup-node` (Node 22) inside the calling job,
+> which changes `node` on the `PATH` for every later step of that job. Run it
+> in its own job (as above), or after any steps that need another Node
+> version.
+
+### Option 2: npm / npx
+
+The package is `tablero-automatico-notion`; its command is `tablero-notion`.
+From the root of your repository:
+
+```bash
+npx tablero-automatico-notion --dry-run   # one-off run, nothing written to Notion
+```
+
+Or install it as a dev dependency and call the command by its name:
+
+```bash
+npm install --save-dev tablero-automatico-notion
+npx tablero-notion --dry-run
+npx tablero-notion            # real sync
+```
+
+It reads `.env` from the current directory, so run it from the repository
+root. `git` and an authenticated `gh` must be on the `PATH`.
+
+### Option 3: from a clone of this repository
+
 ```bash
 npm ci
+npm run sync:dry
 ```
+
+### Advanced tasks in short
+
+Tasks are optional. To sync them: write task documents in `odd/tareas/`
+(same format plus `feature: "<feature-slug>"`), create a second Notion
+database with the [task columns](#advanced-tasks-optional), share it with the
+integration and set `NOTION_TAREAS_DB_ID` (the `notion-tasks-database-id`
+input in the action). Without it, tasks are still validated but not written.
 
 ## Create the Notion database
 
@@ -210,7 +296,7 @@ The `.github/workflows/sync-tablero-notion.yml` workflow runs on four
 triggers:
 
 1. **`push`** to the base branch, when something relevant changes (a
-   document in `odd/tasks/`, the script itself, the workflow, or
+   document in `odd/tasks/` or `odd/tareas/`, the script itself, the workflow, or
    `package.json`/`package-lock.json`): performs the real sync.
 2. **`pull_request`** on those same paths: only validates the documents'
    format (`sync:dry`, without credentials), so a PR fails before merge if a
@@ -222,7 +308,8 @@ triggers:
 4. **`workflow_dispatch`**: to force a manual run.
 
 It needs two secrets configured in the repository (**Settings → Secrets and
-variables → Actions**): `NOTION_TOKEN` and `NOTION_TABLERO_DB_ID`. If they
+variables → Actions**): `NOTION_TOKEN` and `NOTION_TABLERO_DB_ID` (plus the optional
+`NOTION_TAREAS_DB_ID` for tasks). If the first two
 are missing, the sync job stops within seconds with an explicit error, before
 installing anything, and never reports a success that did not actually write
 anything.
@@ -231,8 +318,8 @@ For an English board, add a repository **variable** (not a secret)
 `BOARD_LANGUAGE` with value `en` in the same settings page, under the
 **Variables** tab. If it is not defined, the workflow uses `es`.
 
-Separately, the `.github/workflows/ci.yml` workflow runs `npm run typecheck`
-and `npm test` on every push to `main` and every pull request. It needs no
+Separately, the `.github/workflows/ci.yml` workflow runs `npm run typecheck`,
+`npm run build` and `npm test` on every push to `main` and every pull request. It needs no
 credentials.
 
 ## Document format contract
@@ -454,6 +541,38 @@ ana-gh <ana@example.com> Ana Pérez <ana@personal.com>
 
 (the first line renames commits made with `ana@example.com`; the second
 renames and re-emails those made as `Ana Pérez <ana@personal.com>`).
+
+## Agent skill
+
+The package ships an agent skill at `skill/SKILL.md` (also in this
+repository) that teaches an AI coding agent the document contract: where
+feature and task documents live, the frontmatter rules, the task line
+format, how status and contributors are derived, and how to validate with
+`--dry-run`. Copy the `skill/` folder into your agent's skills directory
+(for example `.claude/skills/tablero-odd-documents/` or
+`~/.claude/skills/tablero-odd-documents/`), or point the agent at the file
+from `node_modules/tablero-automatico-notion/skill/SKILL.md`.
+
+## Upgrading from v1
+
+- **Script path**: the single `src/sync-tablero-features.ts` script is now
+  `src/entrypoints/cli.ts`. `npm run sync` and `npm run sync:dry` still work;
+  update any workflow or script that called the old file directly, or switch
+  to the [GitHub Action](#option-1-github-action-recommended) or the
+  `tablero-notion` command.
+- **New optional columns**: `Contribuyentes` (`Contributors`) on the
+  Features database (multi-select). Without it the sync prints one
+  informational line and skips it (and does not read its sources); existing
+  boards keep working unchanged.
+- **New optional database**: Tasks, with `Feature` (relation),
+  `Responsable` (`Assignee`, person) and `Contribuyentes` (see
+  [Advanced tasks](#advanced-tasks-optional)).
+- **New environment variables**: `NOTION_TAREAS_DB_ID` and
+  `TABLERO_CARPETA_TAREAS` (both optional). An explicitly empty
+  `TABLERO_CARPETA_TAREAS`, or one equal to `TABLERO_CARPETA`, is a
+  configuration error.
+- **Workflow**: add `odd/tareas/**` to its `paths` filters and, if you use
+  tasks, pass `NOTION_TAREAS_DB_ID` as a secret.
 
 ## Known limitations
 

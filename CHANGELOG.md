@@ -7,8 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-08
+
+Advanced tasks with their own Notion database, contributors from git and
+GitHub, a modular core, and public distribution as a GitHub Action and an npm
+package.
+
 ### Added
 
+- Distribution: composite GitHub Action (`action.yml`, `uses:
+  AlexMendizabal/Tablero-Automatico-Notion@v2`) with `notion-token`,
+  `notion-database-id`, `notion-tasks-database-id`, `board-language`,
+  `dry-run`, `features-folder`, `tasks-folder` and `base-branch` inputs.
+- Distribution: npm package `tablero-automatico-notion` with the
+  `tablero-notion` command (compiled to `dist/` by `npm run build`), and an
+  agent skill (`skill/SKILL.md`) for writing ODD documents.
 - Advanced tasks: a second synchronizable entity, **Tarea**, read from
   `odd/tareas/*.md` (folder configurable with `TABLERO_CARPETA_TAREAS`). Same
   document format as features plus an optional `feature: "<slug>"` parent key;
@@ -38,8 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`gh pr view <number> --json commits`, one call per merged PR per run). GitHub login when known (PR author or noreply email),
   otherwise the git author name with `.mailmap` applied; bots excluded,
   case-insensitive deduplication, alphabetical order. If the column is
-  missing, it is not written and one informational line is printed per
-  database; with another type it is a schema error. When git or gh cannot be
+  missing, it is not written, its sources (`git log`/`git show` for
+  authors, `gh pr view`) are not read, and one informational line is printed
+  per database; with another type it is a schema error. When git or gh cannot be
   read for a document, its contributors are left unchanged in Notion (the
   property is not sent) and a warning lists the affected slugs.
 - `--dry-run` without credentials shows the contributors as the last column
@@ -55,6 +69,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The package is no longer private and `tsx` is now a dev dependency (only
+  `npm run sync`/`sync:dry` use it); the published command runs the compiled
+  `dist/entrypoints/cli.js`. CI also runs `npm run build`, and the board
+  workflow now triggers on `odd/tareas/**` and `action.yml` and passes the
+  optional `NOTION_TAREAS_DB_ID` secret.
 - `TABLERO_CARPETA_TAREAS` explicitly set empty or equal to `TABLERO_CARPETA`
   (after normalization) is now a configuration error, reported before any
   Notion call. The comparison resolves `.` and `..` segments, treats an
@@ -144,6 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests.
 - Example feature document (`odd/tasks/ejemplo-feature.md`) and test suite.
 
-[Unreleased]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/AlexMendizabal/Tablero-Automatico-Notion/releases/tag/v1.0.0
