@@ -10,6 +10,7 @@ import type { EsquemaEntidad } from '../../src/core/entities/tipos';
 import {
     esquemaEsperadoEntidad,
     extraerPaginaExistente,
+    propiedadesOpcionalesAusentes,
     traducirPropiedadesEntidad,
     validarEsquemaEntidad,
 } from '../../src/core/schema';
@@ -33,6 +34,7 @@ const ESQUEMA_PRUEBA: EsquemaEntidad<ClavePrueba, 'Abierta'> = {
     claveSlug: 'slug',
     claveHuella: 'huella',
     propiedadesDeNotion: ['responsable'],
+    propiedadesOpcionales: [],
     textos: {
         es: {
             propiedades: { nombre: 'Nombre', slug: 'Slug', responsable: 'Responsable', huella: 'Huella' },
@@ -249,10 +251,14 @@ describe('descriptor de Tarea', () => {
     test('la forma legible muestra el slug de la feature padre, o "—" si no tiene', () => {
         const descriptor = crearDescriptorTarea();
 
-        expect(descriptor.encabezadoFilaLegible).toBe('slug | feature | estado | progreso | PRs abiertos | días | actualizado');
-        expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila('padre')))).toMatch(
-            /^tarea-x\s+\| padre\s+\| En curso\s+\| 1\/2 tareas\s+\| —\s+\| 1d\s+\| 2026-09-20T00:00:00/,
+        expect(descriptor.encabezadoFilaLegible).toBe(
+            'slug | feature | estado | progreso | PRs abiertos | días | actualizado | contribuyentes',
         );
+        expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila('padre')))).toMatch(
+            /^tarea-x\s+\| padre\s+\| En curso\s+\| 1\/2 tareas\s+\| —\s+\| 1d\s+\| 2026-09-20T00:00:00\.000Z \| —$/,
+        );
+        const { feature: _titulo, ...resto } = filaBase({ contribuyentes: ['Ana', 'Zoe'] });
+        expect(descriptor.formatearFilaLegible({ ...resto, tarea: 'T', featurePadre: null })).toMatch(/ \| Ana, Zoe$/);
         expect(descriptor.formatearFilaLegible(descriptor.construirFila(parametrosFila(null)))).toMatch(
             /^tarea-x\s+\| —\s+\| En curso/,
         );
@@ -325,5 +331,78 @@ describe('Tarea — feature padre inexistente (avisosFeaturePadre)', () => {
     test('cada descriptor nombra la variable de su base de Notion', () => {
         expect(crearDescriptorFeature().variableBaseNotion).toBe('NOTION_TABLERO_DB_ID');
         expect(crearDescriptorTarea().variableBaseNotion).toBe('NOTION_TAREAS_DB_ID');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Propiedades opcionales y "Contribuyentes"
+// ---------------------------------------------------------------------------
+
+describe('propiedades opcionales (propiedadesOpcionales)', () => {
+    type Clave = 'nombre' | 'slug' | 'etiquetas' | 'huella';
+    const ESQUEMA: EsquemaEntidad<Clave, 'Abierta'> = {
+        tiposPropiedad: { nombre: 'title', slug: 'rich_text', etiquetas: 'multi_select', huella: 'rich_text' },
+        claveTitulo: 'nombre',
+        claveSlug: 'slug',
+        claveHuella: 'huella',
+        propiedadesDeNotion: [],
+        propiedadesOpcionales: ['etiquetas'],
+        textos: {
+            es: { propiedades: { nombre: 'Nombre', slug: 'Slug', etiquetas: 'Etiquetas', huella: 'Huella' }, estados: { Abierta: 'Abierta' }, progreso: (h, t) => `${h}/${t}` },
+            en: { propiedades: { nombre: 'Name', slug: 'Slug', etiquetas: 'Tags', huella: 'Fingerprint' }, estados: { Abierta: 'Open' }, progreso: (h, t) => `${h}/${t}` },
+        },
+    };
+    const BASE = { Nombre: { type: 'title' }, Slug: { type: 'rich_text' }, Huella: { type: 'rich_text' } };
+
+    test('si falta, no es un error de esquema y figura como ausente', () => {
+        expect(validarEsquemaEntidad(ESQUEMA, BASE)).toEqual([]);
+        expect(propiedadesOpcionalesAusentes(ESQUEMA, BASE, 'es')).toEqual(['etiquetas']);
+    });
+
+    test('si existe, tiene que tener su tipo (y no figura como ausente)', () => {
+        const conTipoIncorrecto = { ...BASE, Etiquetas: { type: 'rich_text' } };
+        expect(validarEsquemaEntidad(ESQUEMA, conTipoIncorrecto)).toEqual([
+            { nombre: 'Etiquetas', motivo: 'tipo-incorrecto', tipoEsperado: 'multi_select', tipoActual: 'rich_text' },
+        ]);
+        expect(propiedadesOpcionalesAusentes(ESQUEMA, { ...BASE, Etiquetas: { type: 'multi_select' } }, 'es')).toEqual([]);
+    });
+
+    test('se busca por el nombre del idioma', () => {
+        const baseEn = { Name: { type: 'title' }, Slug: { type: 'rich_text' }, Fingerprint: { type: 'rich_text' }, Etiquetas: { type: 'multi_select' } };
+        expect(propiedadesOpcionalesAusentes(ESQUEMA, baseEn, 'en')).toEqual(['etiquetas']);
+    });
+
+    test('las claves omitidas no se traducen (no viajan a Notion)', () => {
+        const valores = { nombre: 'n', slug: 's', etiquetas: { multi_select: [] }, huella: 'h' };
+        expect(Object.keys(traducirPropiedadesEntidad(ESQUEMA, valores, 'es', ['etiquetas']))).toEqual(['Nombre', 'Slug', 'Huella']);
+        expect(Object.keys(traducirPropiedadesEntidad(ESQUEMA, valores, 'es'))).toEqual(['Nombre', 'Slug', 'Etiquetas', 'Huella']);
+    });
+});
+
+describe('"Contribuyentes" en Features y Tareas', () => {
+    test.each([
+        ['Features', crearDescriptorFeature()],
+        ['Tareas', crearDescriptorTarea()],
+    ] as const)('%s: multi-select opcional, "Contribuyentes" / "Contributors"', (nombreBase, descriptor) => {
+        expect(descriptor.nombreBase).toBe(nombreBase);
+        expect((descriptor.tiposPropiedad as Record<string, string>).contribuyentes).toBe('multi_select');
+        expect(descriptor.propiedadesOpcionales).toEqual(['contribuyentes']);
+        expect((descriptor.textos.es.propiedades as Record<string, string>).contribuyentes).toBe('Contribuyentes');
+        expect((descriptor.textos.en.propiedades as Record<string, string>).contribuyentes).toBe('Contributors');
+    });
+
+    test('se escribe como multi_select con un nombre por contribuyente (vacío si no hay)', () => {
+        const feature = crearDescriptorFeature();
+        expect(feature.construirValoresPropiedades(filaBase({ contribuyentes: ['Ana', 'octocat'] }), 'es').contribuyentes).toEqual({
+            multi_select: [{ name: 'Ana' }, { name: 'octocat' }],
+        });
+        expect(feature.construirValoresPropiedades(filaBase(), 'en').contribuyentes).toEqual({ multi_select: [] });
+        // Desconocidos (git o gh fallaron): no viajan, así Notion conserva los suyos.
+        expect(feature.construirValoresPropiedades(filaBase({ contribuyentes: null }), 'es')).not.toHaveProperty('contribuyentes');
+        expect(feature.formatearFilaLegible(filaBase({ contribuyentes: null }))).toMatch(/ \| \?$/);
+        const tarea = crearDescriptorTarea();
+        const { feature: _titulo, ...resto } = filaBase({ contribuyentes: ['Zoe'] });
+        const filaTarea = { ...resto, tarea: 'Tarea X', featurePadre: null };
+        expect(tarea.construirValoresPropiedades(filaTarea, 'es').contribuyentes).toEqual({ multi_select: [{ name: 'Zoe' }] });
     });
 });

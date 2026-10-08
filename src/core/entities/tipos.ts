@@ -8,6 +8,7 @@
  * (`sincronizarEntidad`) y las funciones genéricas de `core/schema.ts` solo
  * hablan con este contrato, nunca con una entidad concreta.
  */
+import type { AutorCommit } from '../contribuyentes';
 import type { Idioma } from '../i18n';
 import type { DocumentoODD, PullRequestInfo, RamaConFecha, TareaDocumento } from '../types';
 
@@ -52,6 +53,11 @@ export interface EsquemaEntidad<C extends string = string, E extends string = st
      *  asignado a mano): se validan en el esquema, pero la sincronización
      *  NUNCA las escribe, aunque el armado de valores las incluyera. */
     propiedadesDeNotion: readonly C[];
+    /** Propiedades opcionales en la base de Notion (ej. "Contribuyentes",
+     *  agregada después de que existieran tableros): si la columna existe,
+     *  tiene que tener el tipo esperado; si falta, no es un error de esquema
+     *  — la sincronización no la escribe e informa una sola línea. */
+    propiedadesOpcionales: readonly C[];
     textos: Readonly<Record<Idioma, TextosEntidad<C, E>>>;
 }
 
@@ -74,6 +80,10 @@ export interface ParametrosFilaEntidad<D extends DocumentoODD = DocumentoODD> {
     todosLosPRs: PullRequestInfo[];
     /** Fechas ISO ya resueltas de `documento.commits`. */
     fechasCommits?: string[];
+    /** Autores de los commits del documento (ramas fuera de la base y
+     *  anclas), ya leídos de git: fuente de sus contribuyentes. `null` si
+     *  alguna fuente no se pudo leer. */
+    autoresCommits?: AutorCommit[] | null;
     fechaDocumento: string | null;
     hoy: Date;
     ownerRepo: string;
@@ -98,6 +108,8 @@ export interface DescriptorEntidad<
     carpeta: string;
     /** Variable de entorno del ID de su base de Notion (para los mensajes). */
     variableBaseNotion: string;
+    /** Nombre de su base de Notion en los mensajes (ej. `'Features'`). */
+    nombreBase: string;
     parsearDocumento(slug: string, contenido: string): ResultadoParseoEntidad<D>;
     /** Regla de estado a partir de las tareas del documento y la cantidad de
      *  PRs abiertos que matchean sus ramas. */

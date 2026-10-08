@@ -61,6 +61,10 @@ function puertosFalsos(
         ramasConFecha: () => [],
         prs: () => [],
         ownerRepo: () => 'owner/repo',
+        refRamaBase: () => null,
+        autoresDeRango: () => [],
+        autoresDeCommit: () => [],
+        autoresDePR: () => [],
     };
     return {
         raizRepo: '/repo',
@@ -188,9 +192,11 @@ describe('sincronizar — carpeta de cada entidad', () => {
 
 describe('sincronizar — carpeta de Tareas inválida (TABLERO_CARPETA_TAREAS)', () => {
     test.each([
-        ['vacía', '', /^TABLERO_CARPETA_TAREAS está vacía/],
-        ['igual a la de Features', './odd/tasks/', /^TABLERO_CARPETA_TAREAS \(".\/odd\/tasks\/"\) es la misma carpeta que TABLERO_CARPETA/],
-    ])('%s: error de configuración con código 1, antes de cualquier llamada a Notion', async (_caso, carpetaTareas, mensaje) => {
+        ['vacía', '', /^TABLERO_CARPETA_TAREAS está vacía/, true],
+        ['igual a la de Features', './odd/tasks/', /^TABLERO_CARPETA_TAREAS \(".\/odd\/tasks\/"\) es la misma carpeta que TABLERO_CARPETA/, true],
+        ['absoluta dentro del repositorio e igual a la de Features', '/repo/odd/tasks', /es la misma carpeta que TABLERO_CARPETA/, true],
+        ['igual a la de Features salvo mayúsculas (Windows/macOS)', 'ODD/Tasks', /es la misma carpeta que TABLERO_CARPETA/, false],
+    ] as const)('%s: error de configuración con código 1, antes de cualquier llamada a Notion', async (_caso, carpetaTareas, mensaje, sensible) => {
         const lineas: string[] = [];
         const crearClienteNotion = jest.fn();
         const listarDocumentos = jest.fn(() => documentosFeatures());
@@ -198,7 +204,7 @@ describe('sincronizar — carpeta de Tareas inválida (TABLERO_CARPETA_TAREAS)',
         const resumen = await app.sincronizar(
             { dryRun: false },
             puertosFalsos(listarDocumentos, {
-                ajustes: { ...AJUSTES, carpetaTareas },
+                ajustes: { ...AJUSTES, carpetaTareas, rutasSensiblesAMayusculas: sensible },
                 credenciales: { token: 'tok', databaseId: '0123456789abcdef0123456789abcdef' },
                 crearClienteNotion,
                 log: (l) => lineas.push(l),
@@ -282,7 +288,7 @@ describe('sincronizar — "--dry-run" sin credenciales con Tareas', () => {
         expect(lineas[inicioTareas - 1]).toBe('');
         expect(lineas.slice(inicioTareas + 1, inicioTareas + 3)).toEqual([
             '--dry-run sin credenciales: NO se consultó Notion. Filas calculadas desde el repositorio:',
-            'slug | feature | estado | progreso | PRs abiertos | días | actualizado',
+            'slug | feature | estado | progreso | PRs abiertos | días | actualizado | contribuyentes',
         ]);
         expect(lineas[inicioTareas + 3]).toMatch(/^tarea-x\s+\| feature-x\s+\| Terminada\s+\| 1\/1 tareas/);
         expect(lineas.slice(inicioTareas + 4)).toEqual([

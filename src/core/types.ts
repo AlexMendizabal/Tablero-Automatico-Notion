@@ -2,6 +2,7 @@
  * Tipos compartidos del núcleo puro.
  */
 import type { ClavePropiedad, TEXTOS_POR_IDIOMA } from './entities/feature';
+import type { AutorCommit } from './contribuyentes';
 import type { Idioma } from './i18n';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,9 @@ export interface PullRequestInfo {
      *  trabajo real (ver `calcularActualizado`). Queda opcional en el tipo
      *  solo para poder demostrar en los tests que se ignora aunque llegue. */
     updatedAt?: string;
+    /** Login de GitHub del autor del PR (ausente si es un bot o `gh` no lo
+     *  informa). Fuente de los contribuyentes del documento. */
+    autor?: string;
 }
 
 export interface FilaTablero {
@@ -68,6 +72,10 @@ export interface FilaTablero {
     actualizado: string; // ISO
     documento: string; // URL
     huella: string;
+    /** Contribuyentes (logins de GitHub o nombres), ya normalizados y
+     *  ordenados (ver `calcularContribuyentes`). `null` si no se pudieron
+     *  leer de git o gh: no se escriben (se conservan los de Notion). */
+    contribuyentes: string[] | null;
 }
 
 export type RichTextArray = Array<{ type: 'text'; text: { content: string } }>;
@@ -84,6 +92,8 @@ export interface ValoresPropiedades {
     diasSinActividad: { number: number };
     actualizado: { date: { start: string } };
     documento: { url: string };
+    /** Ausente si los contribuyentes no se conocen (no se escriben). */
+    contribuyentes?: { multi_select: Array<{ name: string }> };
     huella: { rich_text: RichTextArray };
 }
 
@@ -154,6 +164,10 @@ export interface ParametrosConstruirFila {
     todosLosPRs: PullRequestInfo[];
     /** Fechas ISO ya resueltas de `documento.commits` (ver `ParametrosActualizado`). */
     fechasCommits?: string[];
+    /** Autores de los commits del documento (los de sus ramas que no están
+     *  en la rama base y los de sus anclas de `commits`), ya leídos de git.
+     *  `null` si alguna fuente no se pudo leer. */
+    autoresCommits?: AutorCommit[] | null;
     fechaDocumento: string | null;
     hoy: Date;
     ownerRepo: string;

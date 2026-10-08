@@ -8,6 +8,7 @@
  * (`crearDescriptorFeature`) para la orquestación genérica.
  */
 import { AJUSTES_POR_DEFECTO, type AjustesProyecto } from '../ajustes';
+import { calcularContribuyentes } from '../contribuyentes';
 import type { Idioma } from '../i18n';
 import { parsearDocumento } from '../parse';
 import { calcularHuella } from '../plan';
@@ -51,6 +52,7 @@ export const TIPOS_PROPIEDAD = {
     diasSinActividad: 'number',
     actualizado: 'date',
     documento: 'url',
+    contribuyentes: 'multi_select',
     huella: 'rich_text',
 } as const;
 
@@ -78,6 +80,7 @@ export const TEXTOS_POR_IDIOMA = {
             diasSinActividad: 'Días sin actividad',
             actualizado: 'Actualizado',
             documento: 'Documento',
+            contribuyentes: 'Contribuyentes',
             huella: 'Huella',
         },
         estados: {
@@ -100,6 +103,7 @@ export const TEXTOS_POR_IDIOMA = {
             diasSinActividad: 'Days inactive',
             actualizado: 'Updated',
             documento: 'Document',
+            contribuyentes: 'Contributors',
             huella: 'Fingerprint',
         },
         estados: {
@@ -120,6 +124,9 @@ export const ESQUEMA_FEATURE: EsquemaEntidad<ClavePropiedad, Estado> = {
     claveHuella: 'huella',
     // Features no tiene propiedades de Notion: todo sale del repositorio.
     propiedadesDeNotion: [],
+    // Contribuyentes se agregó con tableros ya en uso: si la base no tiene
+    // la columna, no se escribe (ver `propiedadesOpcionalesAusentes`).
+    propiedadesOpcionales: ['contribuyentes'],
     textos: TEXTOS_POR_IDIOMA,
 };
 
@@ -154,6 +161,10 @@ export function construirValoresPropiedades(fila: FilaTablero, idioma: Idioma = 
         diasSinActividad: { number: fila.diasSinActividad },
         actualizado: { date: { start: fila.actualizado } },
         documento: { url: fila.documento },
+        // Desconocidos (git o gh fallaron): no se escriben.
+        ...(fila.contribuyentes === null
+            ? {}
+            : { contribuyentes: { multi_select: fila.contribuyentes.map((name) => ({ name })) } }),
         huella: { rich_text: textoRico(fila.huella) },
     };
 }
@@ -235,11 +246,27 @@ export function construirFilaEnCarpeta(
         actualizado,
         documento: `https://github.com/${ownerRepo}/blob/${ramaBaseDocumento}/${carpeta}/${documento.slug}.md`,
         huella: calcularHuella(documento.tareas),
+        contribuyentes:
+            parametros.autoresCommits === null
+                ? null
+                : calcularContribuyentes({
+                      loginsPrs: [...prsQueMatchean]
+                          .sort((a, b) => a.number - b.number)
+                          .flatMap((pr) => (pr.autor ? [pr.autor] : [])),
+                      commits: parametros.autoresCommits ?? [],
+                  }),
     };
 }
 
 /** Encabezado de `formatearFilaLegible` ("--dry-run" sin credenciales). */
-export const ENCABEZADO_FILA_LEGIBLE = 'slug | estado | progreso | PRs abiertos | días | actualizado';
+export const ENCABEZADO_FILA_LEGIBLE = 'slug | estado | progreso | PRs abiertos | días | actualizado | contribuyentes';
+
+/** Columna de contribuyentes de la forma legible: separados por comas, "—"
+ *  si no hay ninguno, o "?" si no se pudieron leer. */
+export function contribuyentesLegibles(contribuyentes: readonly string[] | null): string {
+    if (contribuyentes === null) return '?';
+    return contribuyentes.length > 0 ? contribuyentes.join(', ') : '—';
+}
 
 export function formatearFilaLegible(fila: FilaTablero): string {
     return [
@@ -249,6 +276,7 @@ export function formatearFilaLegible(fila: FilaTablero): string {
         (fila.prsAbiertos || '—').padEnd(16),
         `${fila.diasSinActividad}d`.padEnd(6),
         fila.actualizado,
+        contribuyentesLegibles(fila.contribuyentes),
     ].join(' | ');
 }
 
@@ -266,6 +294,7 @@ export function crearDescriptorFeature(ajustes: AjustesProyecto = AJUSTES_POR_DE
         clave: 'feature',
         carpeta: ajustes.carpetaFeatures,
         variableBaseNotion: 'NOTION_TABLERO_DB_ID',
+        nombreBase: 'Features',
         parsearDocumento,
         derivarEstado,
         construirFila: (parametros) => construirFila(parametros, ajustes),

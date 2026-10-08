@@ -28,6 +28,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolved relation per task.
 - Tasks database: `Responsable` (`Assignee` in `en`) person property, managed
   by hand in Notion. The sync validates it and never writes or overwrites it.
+- Contributors: optional `Contribuyentes` (`Contributors` in `en`)
+  multi-select column on both the Features and Tasks databases, written on
+  create and on every update. Values come from the commits of the document's
+  branches that are not on the base branch (`origin/<TABLERO_RAMA_BASE>`, or
+  the local branch; skipped with a warning if neither exists), its `commits`
+  anchors (which cover squash merges), `Co-authored-by` trailers, the
+  authors of its PRs and the commit authors of its merged PRs
+  (`gh pr view <number> --json commits`, one call per merged PR per run). GitHub login when known (PR author or noreply email),
+  otherwise the git author name with `.mailmap` applied; bots excluded,
+  case-insensitive deduplication, alphabetical order. If the column is
+  missing, it is not written and one informational line is printed per
+  database; with another type it is a schema error. When git or gh cannot be
+  read for a document, its contributors are left unchanged in Notion (the
+  property is not sent) and a warning lists the affected slugs.
+- `--dry-run` without credentials shows the contributors as the last column
+  of each row (`—` when there are none).
 
 ### Fixed
 
@@ -41,9 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `TABLERO_CARPETA_TAREAS` explicitly set empty or equal to `TABLERO_CARPETA`
   (after normalization) is now a configuration error, reported before any
-  Notion call. When `TABLERO_CARPETA_TAREAS` is not set and `TABLERO_CARPETA`
-  is the default tasks folder (`odd/tareas`), tasks are disabled instead and
-  the output is the features-only one.
+  Notion call. The comparison resolves `.` and `..` segments, treats an
+  absolute path inside the repository as relative to its root, and ignores
+  letter case on Windows and macOS. When `TABLERO_CARPETA_TAREAS` is not set
+  and `TABLERO_CARPETA` is the default tasks folder (`odd/tareas`), tasks are
+  disabled instead and the output is the features-only one.
+- `gh pr list` now also requests each PR's `author` (same single call).
 - The task frontmatter `feature` must be a valid document slug: not empty,
   not `.` or `..`, no leading or trailing whitespace (inner spaces and dots
   are fine, e.g. `mi feature` or `a..b`), and no `/`, `\`,

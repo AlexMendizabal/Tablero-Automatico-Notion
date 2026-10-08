@@ -50,17 +50,33 @@ export function clavesEscribibles<C extends string, E extends string>(esquema: E
  *  idioma, en el orden de `tiposPropiedad`. Las claves ausentes se omiten
  *  (ej. la huella, que se escribe aparte al final), y las propiedades de
  *  Notion se descartan SIEMPRE, aunque vengan en `valores`: esta es la única
- *  puerta por la que pasan las propiedades que se escriben. */
+ *  puerta por la que pasan las propiedades que se escriben. Las claves de
+ *  `omitir` (ej. propiedades opcionales que la base no tiene, ver
+ *  `propiedadesOpcionalesAusentes`) tampoco se traducen. */
 export function traducirPropiedadesEntidad<C extends string, E extends string>(
     esquema: EsquemaEntidad<C, E>,
     valores: Partial<Record<C, unknown>>,
     idioma: Idioma,
+    omitir: readonly C[] = [],
 ): PropiedadesNotionBrutas {
     const traducidas: PropiedadesNotionBrutas = {};
     for (const clave of clavesEscribibles(esquema)) {
+        if (omitir.includes(clave)) continue;
         if (valores[clave] !== undefined) traducidas[esquema.textos[idioma].propiedades[clave]] = valores[clave];
     }
     return traducidas;
+}
+
+/** Claves de las propiedades opcionales (`propiedadesOpcionales`) que la
+ *  base de Notion no tiene: no se escriben. */
+export function propiedadesOpcionalesAusentes<C extends string, E extends string>(
+    esquema: EsquemaEntidad<C, E>,
+    propiedadesDeLaBase: Record<string, PropiedadEsquemaNotion>,
+    idioma: Idioma,
+): C[] {
+    return esquema.propiedadesOpcionales.filter(
+        (clave) => propiedadesDeLaBase[esquema.textos[idioma].propiedades[clave]] === undefined,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +90,8 @@ function idComparable(id: string): string {
 }
 
 /**
- * Compara el esquema esperado de la entidad con el de la base real. Además
+ * Compara el esquema esperado de la entidad con el de la base real (una
+ * propiedad opcional puede faltar, pero si existe se valida igual). Además
  * del nombre y el tipo, una propiedad `relation` cuya clave figura en
  * `destinosRelacion` (clave → data source esperado) tiene que apuntar a ese
  * data source (`relation.data_source_id`, Notion-Version 2025-09-03); si
@@ -93,7 +110,10 @@ export function validarEsquemaEntidad<C extends string, E extends string>(
         const tipoEsperado = esquema.tiposPropiedad[clave];
         const actual = propiedadesDeLaBase[nombre];
         if (!actual) {
-            problemas.push({ nombre, motivo: 'faltante', tipoEsperado });
+            // Una propiedad opcional que falta no es un problema: no se escribe.
+            if (!esquema.propiedadesOpcionales.includes(clave)) {
+                problemas.push({ nombre, motivo: 'faltante', tipoEsperado });
+            }
             continue;
         }
         if (actual.type !== tipoEsperado) {

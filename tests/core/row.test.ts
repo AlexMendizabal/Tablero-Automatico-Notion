@@ -8,7 +8,7 @@
  * `validar-rutas-docs.test.ts`), así que mover o editar un archivo del repo
  * no puede volver estos tests rojos por accidente.
  */
-import { construirFila, formatearFilaLegible } from '../../src/core/entities/feature';
+import { construirFila, ENCABEZADO_FILA_LEGIBLE, formatearFilaLegible } from '../../src/core/entities/feature';
 import { type DocumentoODD } from '../../src/core/types';
 import { filaBase, tarea } from '../helpers/fixtures';
 
@@ -134,6 +134,49 @@ describe('construirFila', () => {
     });
 });
 
+describe('construirFila — contribuyentes', () => {
+    const pr = (number: number, headRefName: string, autor?: string) => ({
+        number,
+        headRefName,
+        state: 'MERGED' as const,
+        createdAt: '2026-08-01T00:00:00Z',
+        mergedAt: '2026-08-02T00:00:00Z',
+        closedAt: '2026-08-02T00:00:00Z',
+        ...(autor ? { autor } : {}),
+    });
+
+    test('une los autores de sus commits con los autores de SUS PRs (solo los que matchean sus ramas)', () => {
+        const documento: DocumentoODD = { slug: 'x', ramas: ['feat/x*'], commits: [], titulo: 'X', tareas: [tarea()] };
+        const fila = construirFila({
+            documento,
+            todasLasRamas: [],
+            todosLosPRs: [pr(1, 'feat/x-1', 'octocat'), pr(2, 'feat/otra', 'intrusa'), pr(3, 'feat/x-2')],
+            autoresCommits: [
+                { nombre: 'Zoe', email: 'zoe@x.com', coautores: [{ nombre: 'Bruno', email: 'b@x.com' }] },
+                { nombre: 'Octo', email: '1+OctoCat@users.noreply.github.com', coautores: [] },
+            ],
+            fechaDocumento: null,
+            hoy: new Date('2026-09-21T00:00:00Z'),
+            ownerRepo: 'o/r',
+        });
+
+        expect(fila.contribuyentes).toEqual(['Bruno', 'octocat', 'Zoe']);
+    });
+
+    test('sin autores ni PRs, ninguno', () => {
+        const documento: DocumentoODD = { slug: 'x', ramas: ['feat/x'], commits: [], titulo: 'X', tareas: [tarea()] };
+        const fila = construirFila({
+            documento,
+            todasLasRamas: [],
+            todosLosPRs: [],
+            fechaDocumento: null,
+            hoy: new Date('2026-09-21T00:00:00Z'),
+            ownerRepo: 'o/r',
+        });
+        expect(fila.contribuyentes).toEqual([]);
+    });
+});
+
 // ---------------------------------------------------------------------------
 // formatearFilaLegible ("--dry-run" sin credenciales)
 // ---------------------------------------------------------------------------
@@ -141,8 +184,17 @@ describe('construirFila', () => {
 describe('formatearFilaLegible', () => {
     test('fija el ancho de cada columna y el separador " | "', () => {
         expect(formatearFilaLegible(filaBase())).toBe(
-            'feature-x                    | En curso       | 1/2 tareas   | #1               | 5d     | 2026-09-01T00:00:00.000Z',
+            'feature-x                    | En curso       | 1/2 tareas   | #1               | 5d     | 2026-09-01T00:00:00.000Z | —',
         );
+    });
+
+    test('los contribuyentes van al final, separados por comas', () => {
+        const columnas = formatearFilaLegible(filaBase({ contribuyentes: ['Ana', 'octocat'] })).split(' | ');
+        expect(columnas[columnas.length - 1]).toBe('Ana, octocat');
+    });
+
+    test('el encabezado nombra la columna de contribuyentes', () => {
+        expect(ENCABEZADO_FILA_LEGIBLE).toBe('slug | estado | progreso | PRs abiertos | días | actualizado | contribuyentes');
     });
 
     test('sin PRs abiertos muestra una raya (—) en esa columna', () => {

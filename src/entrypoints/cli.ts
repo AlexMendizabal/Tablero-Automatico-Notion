@@ -17,12 +17,15 @@ import type { AjustesProyecto } from '../core/ajustes';
 import type { Idioma } from '../core/i18n';
 import { AJUSTES_PROYECTO, cargarCredenciales, leerBoardLanguage } from '../adapters/config';
 import { listarDocumentosODD } from '../adapters/fs-node';
-import { obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
+import { obtenerAutoresDePR, obtenerOwnerRepo, obtenerPRs } from '../adapters/gh-cli';
 import {
+    obtenerAutoresDeCommit,
+    obtenerAutoresDeRango,
     obtenerEsRepoSuperficial,
     obtenerFechaCommit,
     obtenerFechaDocumento,
     obtenerRamasConFecha,
+    obtenerRefRamaBase,
 } from '../adapters/git-cli';
 import { crearClienteNotion, dormirPorDefecto } from '../adapters/notion-http';
 import type { Credenciales, Dormir, FetchInyectado } from '../ports/notion';
@@ -67,6 +70,10 @@ export function componerDependencias(entrada: EntradaComposicion): DependenciasS
             ramasConFecha: () => obtenerRamasConFecha(ejecutar),
             prs: () => obtenerPRs(ejecutar),
             ownerRepo: () => obtenerOwnerRepo(ejecutar),
+            refRamaBase: (ramaBase) => obtenerRefRamaBase(ejecutar, ramaBase),
+            autoresDeRango: (base, rama) => obtenerAutoresDeRango(ejecutar, base, rama),
+            autoresDeCommit: (sha) => obtenerAutoresDeCommit(ejecutar, sha),
+            autoresDePR: (numero) => obtenerAutoresDePR(ejecutar, numero),
         },
         configuracion: { cargarCredenciales, leerBoardLanguage },
         crearClienteNotion: (token) => crearClienteNotion(fetchInyectado, token, dormir),

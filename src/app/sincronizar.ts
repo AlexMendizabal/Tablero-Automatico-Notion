@@ -3,6 +3,7 @@
  * y escribe (o solo informa, con "--dry-run").
  */
 import { validarAjustesProyecto } from '../core/ajustes';
+import type { AutorCommit } from '../core/contribuyentes';
 import { mensajeDeError } from '../core/errores';
 import { type ResultadoIdioma, resolverIdiomaTablero } from '../core/i18n';
 import { normalizarIdBaseNotion } from '../core/id-notion';
@@ -10,9 +11,15 @@ import { crearDescriptorFeature } from '../core/entities/feature';
 import { crearDescriptorTarea, type RelacionFeatures } from '../core/entities/tarea';
 import type { AvisoDocumento, DescriptorEntidad, FilaEntidad } from '../core/entities/tipos';
 import { planificarSync, resolverDuplicadosPorSlug } from '../core/plan';
-import { extraerPaginaExistente, traducirPropiedadesEntidad, validarEsquemaEntidad } from '../core/schema';
-import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida } from '../core/types';
-import type { DependenciasSincronizar } from '../ports/sincronizar';
+import {
+    extraerPaginaExistente,
+    propiedadesOpcionalesAusentes,
+    traducirPropiedadesEntidad,
+    validarEsquemaEntidad,
+} from '../core/schema';
+import { coincideRama } from '../core/status';
+import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida, PullRequestInfo, RamaConFecha } from '../core/types';
+import type { DependenciasSincronizar, RepositorioGit } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
     dryRun: boolean;
@@ -252,7 +259,7 @@ export async function sincronizar(
     const log = dependencias.log ?? (() => {});
     // Carpetas mal configuradas: error de configuración antes de leer nada
     // o de llamar a Notion (ni siquiera se sincronizan las Features).
-    const errorAjustes = validarAjustesProyecto(dependencias.ajustes);
+    const errorAjustes = validarAjustesProyecto(dependencias.ajustes, dependencias.raizRepo);
     if (errorAjustes !== null) {
         log(errorAjustes);
         return {
@@ -272,6 +279,10 @@ export async function sincronizar(
         dependencias.credenciales !== undefined
             ? dependencias.credenciales
             : dependencias.configuracion.cargarCredenciales(dependencias.raizRepo);
+
+    // Un "gh pr view" por PR en toda la corrida: Features y Tareas comparten
+    // los autores de los commits de cada PR mergeado.
+    dependencias = { ...dependencias, repositorio: conAutoresDePRCompartidos(dependencias.repositorio) };
 
     const features = await sincronizarEntidad(crearDescriptorFeature(dependencias.ajustes), opciones, {
         ...dependencias,
@@ -348,6 +359,72 @@ export async function sincronizar(
         },
     );
     return conTareas(tareas);
+}
+
+/** El mismo repositorio, con `autoresDePR` memorizado por número de PR. */
+function conAutoresDePRCompartidos(repositorio: RepositorioGit): RepositorioGit {
+    const porNumero = new Map<number, AutorCommit[] | null>();
+    return {
+        ...repositorio,
+        autoresDePR: (numero) => {
+            if (!porNumero.has(numero)) porNumero.set(numero, repositorio.autoresDePR(numero));
+            return porNumero.get(numero) ?? null;
+        },
+    };
+}
+
+/**
+ * Lector de los autores de commits de un documento (fuente de sus
+ * contribuyentes): los de cada rama viva que matchea sus `ramas` (local u
+ * `origin/`) que no están en la rama base, los de sus anclas de
+ * `commits` y los de los commits de cada PR mergeado que matchea sus
+ * `ramas` (un merge sin squash deja esos commits dentro de la base, donde
+ * `base..rama` ya no los ve). La rama base (`origin/<base>` o, si no existe, la local) se
+ * resuelve una sola vez y solo si algún documento tiene ramas vivas; si no
+ * existe, los commits de ramas se saltean con un único aviso (no es un
+ * error). Cada rama se consulta una sola vez por entidad. Si alguna fuente
+ * no se pudo leer (git o gh fallaron), devuelve `null`: los contribuyentes
+ * de ese documento quedan desconocidos y no se escriben.
+ */
+function crearLectorAutores(
+    dependencias: DependenciasSincronizar,
+    todasLasRamas: RamaConFecha[],
+    todosLosPRs: PullRequestInfo[],
+    log: (linea: string) => void,
+): (documento: DocumentoODD) => AutorCommit[] | null {
+    const { repositorio } = dependencias;
+    const ramaBase = dependencias.ajustes.ramaBaseDocumento;
+    let refBase: string | null | undefined;
+    const porRama = new Map<string, AutorCommit[] | null>();
+    const autoresDeRama = (base: string, rama: string): AutorCommit[] | null => {
+        if (!porRama.has(rama)) porRama.set(rama, repositorio.autoresDeRango(base, rama));
+        return porRama.get(rama) ?? null;
+    };
+    return (documento) => {
+        const ramas = todasLasRamas.filter((r) => documento.ramas.some((patron) => coincideRama(patron, r.nombre)));
+        const lecturas: Array<AutorCommit[] | null> = [];
+        if (ramas.length > 0) {
+            if (refBase === undefined) {
+                refBase = repositorio.refRamaBase(ramaBase);
+                if (refBase === null) {
+                    log(
+                        `Aviso: no existe la rama base "${ramaBase}" (ni "origin/${ramaBase}"): los contribuyentes no incluyen los commits de las ramas.`,
+                    );
+                }
+            }
+            const base = refBase;
+            if (base !== null) for (const rama of ramas) lecturas.push(autoresDeRama(base, rama.nombre));
+        }
+        for (const sha of documento.commits) lecturas.push(repositorio.autoresDeCommit(sha));
+        const prsMergeados = todosLosPRs
+            .filter((pr) => pr.state === 'MERGED' && documento.ramas.some((patron) => coincideRama(patron, pr.headRefName)))
+            .sort((a, b) => a.number - b.number);
+        for (const pr of prsMergeados) lecturas.push(repositorio.autoresDePR(pr.number));
+        // Una sola fuente ilegible vuelve desconocidos a todos: una lista
+        // parcial pisaría en Notion a quienes faltan.
+        if (lecturas.some((autores) => autores === null)) return null;
+        return lecturas.flatMap((autores) => autores ?? []);
+    };
 }
 
 /** Lo que `sincronizar` le pasa a una entidad además de sus dependencias. */
@@ -556,19 +633,31 @@ export async function sincronizarEntidad<
     const todasLasRamas = dependencias.repositorio.ramasConFecha();
     const todosLosPRs = dependencias.repositorio.prs();
     const ownerRepo = dependencias.repositorio.ownerRepo();
+    const autoresDeDocumento = crearLectorAutores(dependencias, todasLasRamas, todosLosPRs, log);
 
-    const filas = documentosValidos.map((documento) =>
-        descriptor.construirFila({
+    const slugsSinContribuyentes: string[] = [];
+    const filas = documentosValidos.map((documento) => {
+        const autoresCommits = autoresDeDocumento(documento);
+        if (autoresCommits === null) slugsSinContribuyentes.push(documento.slug);
+        return descriptor.construirFila({
             documento,
             todasLasRamas,
             todosLosPRs,
             fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
+            autoresCommits,
             fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
             hoy,
             ownerRepo,
             idioma,
-        }),
-    );
+        });
+    });
+    // No es un error (el código no cambia): esas páginas conservan en Notion
+    // los contribuyentes que ya tenían.
+    if (slugsSinContribuyentes.length > 0) {
+        log(
+            `Aviso: no se pudieron leer los contribuyentes de git o gh para: ${slugsSinContribuyentes.join(', ')}. Se conservan los de Notion.`,
+        );
+    }
 
     const resumenSinNotion = (): ResumenSincronizacion => ({
         entidad,
@@ -626,6 +715,17 @@ export async function sincronizarEntidad<
         return cerrar(resumen);
     }
 
+    // Propiedades opcionales que la base no tiene (ej. "Contribuyentes" en un
+    // tablero creado antes de que existiera): una línea informativa cada una
+    // y nunca se escriben; no cambian el código de salida.
+    const omitidas = propiedadesOpcionalesAusentes(descriptor, esquemaActual, idioma);
+    for (const clave of omitidas) {
+        const columna = descriptor.textos[idioma].propiedades[clave];
+        log(`La base de ${descriptor.nombreBase} no tiene la columna "${columna}": se omite.`);
+    }
+    const traducir = (valores: Partial<Record<C, unknown>>) =>
+        traducirPropiedadesEntidad(descriptor, valores, idioma, omitidas);
+
     const paginasNotion = await cliente.listarTodasLasPaginas(dataSourceId);
     const paginasExistentesCrudas = paginasNotion.map((pagina) =>
         extraerPaginaExistente(descriptor, pagina, idioma),
@@ -681,10 +781,10 @@ export async function sincronizarEntidad<
         );
         const pageId = await cliente.crearPagina(
             dataSourceId,
-            traducirPropiedadesEntidad(descriptor, resto, idioma),
+            traducir(resto),
             documento.tareas,
         );
-        await cliente.actualizarPropiedades(pageId, traducirPropiedadesEntidad(descriptor, huella, idioma));
+        await cliente.actualizarPropiedades(pageId, traducir(huella));
         paginasPorSlug.set(fila.slug, pageId);
     }
 
@@ -695,15 +795,15 @@ export async function sincronizarEntidad<
             // Sin reescritura de cuerpo no hay ventana de inconsistencia:
             // todas las propiedades (Huella incluida, que no cambió) se
             // mandan juntas, como antes.
-            await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, valores, idioma));
+            await cliente.actualizarPropiedades(item.pageId, traducir(valores));
             continue;
         }
         const documento = documentosValidos.find((d) => d.slug === item.fila.slug);
         if (!documento) continue;
         const { huella, resto } = separarHuella(descriptor.claveHuella, valores);
-        await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, resto, idioma));
+        await cliente.actualizarPropiedades(item.pageId, traducir(resto));
         await cliente.reescribirCuerpo(item.pageId, documento.tareas);
-        await cliente.actualizarPropiedades(item.pageId, traducirPropiedadesEntidad(descriptor, huella, idioma));
+        await cliente.actualizarPropiedades(item.pageId, traducir(huella));
         cuerposReescritos++;
     }
 

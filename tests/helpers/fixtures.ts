@@ -2,6 +2,8 @@
  * Fixtures y fakes compartidos por los tests (documentos, filas, `ejecutar`
  * falso, fetch falso y un Notion falso completo en memoria).
  */
+import { FORMATO_AUTORES } from '../../src/adapters/git-cli';
+import { type AutorCommit } from '../../src/core/contribuyentes';
 import { type FilaTablero, type PropiedadEsquemaNotion, type TareaDocumento } from '../../src/core/types';
 import { type FetchInyectado } from '../../src/ports/notion';
 import { type EjecutarComando } from '../../src/ports/sincronizar';
@@ -35,6 +37,7 @@ export function filaBase(overrides: Partial<FilaTablero> = {}): FilaTablero {
         actualizado: '2026-09-01T00:00:00.000Z',
         documento: 'https://github.com/owner/repo/blob/master/odd/tasks/feature-x.md',
         huella: 'abc123',
+        contribuyentes: [],
         ...overrides,
     };
 }
@@ -69,7 +72,27 @@ export function crearEjecutarFalso(respuestas: {
     /** Si es true, CUALQUIER comando "git" lanza (simula que git no puede
      *  correr, ej. ENOENT). */
     gitNoDisponible?: boolean;
+    /** Qué ref de la rama base existe ("git rev-parse --verify"), para
+     *  cualquier nombre de rama base: `origin` (por defecto,
+     *  `refs/remotes/origin/<base>`), `local` (`refs/heads/<base>`) o `null`
+     *  (ninguna). */
+    ramaBase?: 'origin' | 'local' | null;
+    /** Rama (sin `origin/`) → autores de sus commits fuera de la base
+     *  ("git log --ignore-missing ..."). Una rama ausente no tiene commits. */
+    autoresPorRama?: Record<string, AutorCommit[]>;
+    /** sha → autores de "git show" con `FORMATO_AUTORES`. Un sha ausente
+     *  da una salida vacía. */
+    autoresPorCommit?: Record<string, AutorCommit[]>;
+    /** Número de PR → sus commits ("gh pr view <n> --json commits"), cada
+     *  uno con sus `authors` tal como los devuelve GitHub. Un PR ausente no
+     *  tiene commits. */
+    commitsPorPR?: Record<number, AutorGitHubFalso[][]>;
+    /** Ramas cuyo "git log" de autores falla (simula un error transitorio). */
+    fallanRamas?: string[];
+    /** PRs cuyo "gh pr view" falla. */
+    fallanPRs?: number[];
 }): EjecutarComando {
+    const ramaBase = respuestas.ramaBase === undefined ? 'origin' : respuestas.ramaBase;
     return (comando: string, args: string[]) => {
         if (comando === 'git' && respuestas.gitNoDisponible) {
             throw new Error('ejecutar falso: spawn git ENOENT');
@@ -77,8 +100,31 @@ export function crearEjecutarFalso(respuestas: {
         if (comando === 'git' && args[0] === 'rev-parse' && args[1] === '--is-shallow-repository') {
             return respuestas.superficial ? 'true' : 'false';
         }
+        if (comando === 'git' && args[0] === 'rev-parse' && args[1] === '--verify') {
+            const ref = args[args.length - 1];
+            const prefijo = ramaBase === 'origin' ? 'refs/remotes/origin/' : ramaBase === 'local' ? 'refs/heads/' : null;
+            if (prefijo !== null && ref.startsWith(prefijo)) return 'f'.repeat(40) + '\n';
+            throw new Error(`ejecutar falso: la ref "${ref}" no existe`);
+        }
+        if (comando === 'git' && args[0] === 'log' && args.includes('--ignore-missing')) {
+            const rama = (args.find((a) => a.startsWith('refs/heads/')) ?? '').slice('refs/heads/'.length);
+            if (respuestas.fallanRamas?.includes(rama)) throw new Error(`ejecutar falso: "git log" falló para ${rama}`);
+            return salidaAutoresGit(respuestas.autoresPorRama?.[rama] ?? []);
+        }
+        if (comando === 'git' && args[0] === 'show' && args.includes(`--format=${FORMATO_AUTORES}`)) {
+            return salidaAutoresGit(respuestas.autoresPorCommit?.[args[args.length - 1]] ?? []);
+        }
         if (comando === 'git' && args[0] === 'for-each-ref') return respuestas.ramas ?? '';
         if (comando === 'gh' && args[0] === 'pr' && args[1] === 'list') return respuestas.prs ?? '[]';
+        if (comando === 'gh' && args[0] === 'pr' && args[1] === 'view') {
+            if (respuestas.fallanPRs?.includes(Number(args[2]))) {
+                throw new Error(`ejecutar falso: "gh pr view ${args[2]}" falló`);
+            }
+            const commits = respuestas.commitsPorPR?.[Number(args[2])] ?? [];
+            return JSON.stringify({
+                commits: commits.map((authors) => ({ authors, messageHeadline: 'commit', messageBody: '' })),
+            });
+        }
         if (comando === 'git' && args[0] === 'log') {
             const rutaArg = args[args.length - 1];
             const slug = rutaArg.replace(/^odd\/(tasks|tareas)\//, '').replace(/\.md$/, '');
@@ -97,6 +143,30 @@ export function crearEjecutarFalso(respuestas: {
         }
         throw new Error(`ejecutar falso: comando no simulado en este test: ${comando} ${args.join(' ')}`);
     };
+}
+
+/** Un autor de un commit de PR, como lo devuelve `gh pr view --json commits`. */
+export interface AutorGitHubFalso {
+    login?: string;
+    name?: string;
+    email?: string;
+}
+
+/** Lo que imprimiría git con `FORMATO_AUTORES` para esos autores. */
+export function salidaAutoresGit(autores: AutorCommit[]): string {
+    return autores
+        .map(
+            (autor) =>
+                [autor.nombre, autor.email, autor.coautores.map((c) => `${c.nombre} <${c.email}>`).join('\x1d')].join(
+                    '\x1f',
+                ) + '\x1e\n',
+        )
+        .join('');
+}
+
+/** Un autor de commit para los falsos (sin coautores por defecto). */
+export function autorCommit(nombre: string, email: string, coautores: AutorCommit['coautores'] = []): AutorCommit {
+    return { nombre, email, coautores };
 }
 
 /** Respuesta fetch falsa, con headers case-insensitive como el fetch real. */
@@ -121,6 +191,7 @@ export const ESQUEMA_CORRECTO_NOTION: Record<string, { type: string }> = {
     'Días sin actividad': { type: 'number' },
     Actualizado: { type: 'date' },
     Documento: { type: 'url' },
+    Contribuyentes: { type: 'multi_select' },
     Huella: { type: 'rich_text' },
 };
 
@@ -314,6 +385,7 @@ export const ESQUEMA_CORRECTO_NOTION_EN: Record<string, { type: string }> = {
     'Days inactive': { type: 'number' },
     Updated: { type: 'date' },
     Document: { type: 'url' },
+    Contributors: { type: 'multi_select' },
     Fingerprint: { type: 'rich_text' },
 };
 
