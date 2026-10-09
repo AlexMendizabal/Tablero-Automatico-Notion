@@ -44,8 +44,8 @@ and you should never commit a `.env` file or paste a Notion token anywhere.
   `chore: ...`, `ci: ...`.
 - Keep each pull request focused on one change, with its tests and docs.
 - Behavior changes need tests in `tests/`.
-- If you change behavior or setup, update both `README.md` (English) and
-  `README.es.md` (Spanish). If you cannot write one of the languages, say so
+- If you change behavior or setup, update both `README.md` (Spanish) and
+  `README.en.md` (English). If you cannot write one of the languages, say so
   in the pull request and a maintainer will help.
 - The Notion property names (`Estado`, `Progreso`, `Huella`, ...) are part of
   the contract with existing databases. Renaming them is a breaking change.
