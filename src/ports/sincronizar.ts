@@ -7,7 +7,7 @@
 import type { AjustesProyecto } from '../core/ajustes';
 import type { AutorCommit } from '../core/contribuyentes';
 import type { Idioma } from '../core/i18n';
-import type { PullRequestInfo, RamaConFecha } from '../core/types';
+import type { PullRequestInfo, RamaConFecha, VersionEnRama } from '../core/types';
 import type { ClienteNotion, Credenciales } from './notion';
 
 export type EjecutarComando = (comando: string, argumentos: string[]) => string;
@@ -22,6 +22,10 @@ export interface RepositorioGit {
     /** Fecha ISO del último commit que tocó `rutaRelativa`; `null` si no hay. */
     fechaDocumento(rutaRelativa: string): string | null;
     ramasConFecha(): RamaConFecha[];
+    /** Versiones de los documentos de `carpeta` en las ramas vivas que
+     *  difieren de las del checkout. LANZA si git falla: la orquestación
+     *  avisa y sigue solo con el checkout. */
+    versionesEnRamas(carpeta: string): VersionEnRama[];
     /** PRs del repositorio, con el login de su autor cuando se conoce. */
     prs(): PullRequestInfo[];
     ownerRepo(): string;

@@ -3,7 +3,7 @@
  * y de commits, y clon superficial.
  */
 import type { AutorCommit, Identidad } from '../core/contribuyentes';
-import type { RamaConFecha } from '../core/types';
+import type { RamaConFecha, VersionEnRama } from '../core/types';
 import type { EjecutarComando } from '../ports/sincronizar';
 
 // ---------------------------------------------------------------------------
@@ -30,6 +30,57 @@ export function obtenerRamasConFecha(ejecutar: EjecutarComando): RamaConFecha[] 
         }
     }
     return [...porNombre.entries()].map(([nombre, fecha]) => ({ nombre, fecha }));
+}
+
+/** Prefijos de las refs de ramas que se leen, en el orden en que se quitan
+ *  para obtener el nombre de la rama. */
+const PREFIJOS_RAMA = ['refs/heads/', 'refs/remotes/origin/'];
+
+/** Ruta → blob de los `.md` que están directamente en `carpeta` dentro de
+ *  `ref` (`git ls-tree -z`: sin comillas en rutas con caracteres raros). */
+function blobsDeDocumentos(ejecutar: EjecutarComando, ref: string, carpeta: string): Map<string, string> {
+    const blobs = new Map<string, string>();
+    for (const entrada of ejecutar('git', ['ls-tree', '-z', ref, '--', `${carpeta}/`]).split('\0')) {
+        const tab = entrada.indexOf('\t');
+        if (tab === -1) continue;
+        const [, tipo, objeto] = entrada.slice(0, tab).split(' ');
+        const ruta = entrada.slice(tab + 1);
+        if (tipo === 'blob' && ruta.toLowerCase().endsWith('.md')) blobs.set(ruta, objeto);
+    }
+    return blobs;
+}
+
+/**
+ * Versiones de los documentos de `carpeta` en cada rama viva (local y
+ * `origin/`) que difieren de las del checkout (`HEAD`): los documentos que
+ * esa rama cambió y los que solo existen en ella. Un blob idéntico al del
+ * checkout no se lee (no aporta nada). LANZA si git falla: el llamador
+ * avisa y sigue solo con el checkout.
+ */
+export function obtenerVersionesEnRamas(ejecutar: EjecutarComando, carpeta: string): VersionEnRama[] {
+    const refs = ejecutar('git', ['for-each-ref', '--format=%(refname)', ...PREFIJOS_RAMA.map((p) => p.slice(0, -1))])
+        .split(/\r?\n/)
+        .map((ref) => ref.trim())
+        .filter((ref) => ref !== '' && ref !== 'refs/remotes/origin/HEAD');
+    if (refs.length === 0) return [];
+    const delCheckout = blobsDeDocumentos(ejecutar, 'HEAD', carpeta);
+    const versiones: VersionEnRama[] = [];
+    for (const ref of refs) {
+        const prefijo = PREFIJOS_RAMA.find((p) => ref.startsWith(p));
+        if (!prefijo) continue;
+        for (const [ruta, blob] of blobsDeDocumentos(ejecutar, ref, carpeta)) {
+            if (delCheckout.get(ruta) === blob) continue;
+            const fecha = ejecutar('git', ['log', '-1', '--format=%cI', ref, '--', ruta]).trim();
+            if (fecha === '') continue;
+            versiones.push({
+                rama: ref.slice(prefijo.length),
+                slug: ruta.slice(ruta.lastIndexOf('/') + 1).replace(/\.md$/i, ''),
+                contenido: ejecutar('git', ['cat-file', 'blob', blob]),
+                fecha,
+            });
+        }
+    }
+    return versiones;
 }
 
 /** Fecha (ISO) del último commit que tocó el documento en `rutaRelativa`

@@ -110,6 +110,24 @@ describe('componerDependencias — contribuyentes', () => {
         expect(repositorio.prs().map((pr) => pr.autor)).toEqual(['octocat']);
     });
 
+    test('el repositorio lee con git las versiones de los documentos en las ramas', () => {
+        const { repositorio } = componer(
+            crearEjecutarFalso({
+                documentosPorRama: {
+                    HEAD: { 'odd/tasks/x.md': { contenido: 'igual', fecha: '2026-09-01T00:00:00Z' } },
+                    'origin/feat/x': {
+                        'odd/tasks/x.md': { contenido: 'igual', fecha: '2026-09-01T00:00:00Z' },
+                        'odd/tasks/y.md': { contenido: 'nuevo', fecha: '2026-09-05T00:00:00Z' },
+                    },
+                },
+            }),
+        );
+
+        expect(repositorio.versionesEnRamas('odd/tasks')).toEqual([
+            { rama: 'feat/x', slug: 'y', contenido: 'nuevo', fecha: '2026-09-05T00:00:00Z' },
+        ]);
+    });
+
     test('sin rama base (ni origin/ ni local), refRamaBase da null', () => {
         expect(componer(crearEjecutarFalso({ ramaBase: null })).repositorio.refRamaBase('main')).toBeNull();
         expect(componer(crearEjecutarFalso({ ramaBase: 'local' })).repositorio.refRamaBase('main')).toBe('refs/heads/main');

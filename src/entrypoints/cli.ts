@@ -29,6 +29,7 @@ import {
     obtenerFechaDocumento,
     obtenerRamasConFecha,
     obtenerRefRamaBase,
+    obtenerVersionesEnRamas,
 } from '../adapters/git-cli';
 import { crearClienteNotion, dormirPorDefecto } from '../adapters/notion-http';
 import type { Credenciales, Dormir, FetchInyectado } from '../ports/notion';
@@ -71,6 +72,7 @@ export function componerDependencias(entrada: EntradaComposicion): DependenciasS
             fechaCommit: (sha) => obtenerFechaCommit(ejecutar, sha),
             fechaDocumento: (rutaRelativa) => obtenerFechaDocumento(ejecutar, rutaRelativa),
             ramasConFecha: () => obtenerRamasConFecha(ejecutar),
+            versionesEnRamas: (carpeta) => obtenerVersionesEnRamas(ejecutar, carpeta),
             prs: () => obtenerPRs(ejecutar),
             ownerRepo: () => obtenerOwnerRepo(ejecutar),
             refRamaBase: (ramaBase) => obtenerRefRamaBase(ejecutar, ramaBase),
