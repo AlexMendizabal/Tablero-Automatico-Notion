@@ -18,7 +18,15 @@ import {
     validarEsquemaEntidad,
 } from '../core/schema';
 import { coincideRama } from '../core/status';
-import type { DocumentoODD, DuplicadoSlug, PropiedadInvalida, PullRequestInfo, RamaConFecha } from '../core/types';
+import type {
+    DocumentoODD,
+    DuplicadoSlug,
+    PropiedadInvalida,
+    PullRequestInfo,
+    RamaConFecha,
+    VersionEnRama,
+} from '../core/types';
+import { type DocumentoLeido, elegirVersionesMasRecientes } from '../core/versiones';
 import type { DependenciasSincronizar, RepositorioGit } from '../ports/sincronizar';
 
 export interface OpcionesCLI {
@@ -361,6 +369,48 @@ export async function sincronizar(
     return conTareas(tareas);
 }
 
+/**
+ * Los documentos del checkout con, por cada slug, la versión de una rama
+ * viva si se editó después (ver `elegirVersionesMasRecientes`). Si git no
+ * puede leer las ramas, sigue solo con el checkout y lo avisa. Los avisos se
+ * devuelven para que el llamador los imprima.
+ */
+function incorporarVersionesDeRamas(
+    descriptor: Pick<DescriptorEntidad<string, string, DocumentoODD, FilaEntidad>, 'carpeta' | 'parsearDocumento'>,
+    dependencias: DependenciasSincronizar,
+    delCheckout: Array<{ slug: string; contenido: string }>,
+): { documentos: DocumentoLeido[]; avisos: string[] } {
+    const { carpeta } = descriptor;
+    let deRamas: VersionEnRama[];
+    try {
+        deRamas = dependencias.repositorio.versionesEnRamas(carpeta);
+    } catch (error) {
+        return {
+            documentos: delCheckout,
+            avisos: [
+                `Aviso: no se pudieron leer los documentos de "${carpeta}" en las ramas (${mensajeDeError(error)}): se usan solo los del checkout.`,
+            ],
+        };
+    }
+    if (deRamas.length === 0) return { documentos: delCheckout, avisos: [] };
+    const { documentos, invalidas } = elegirVersionesMasRecientes({
+        delCheckout,
+        fechaDelCheckout: (slug) => dependencias.repositorio.fechaDocumento(`${carpeta}/${slug}.md`),
+        deRamas,
+        ramasDeclaradas: (slug, contenido) => {
+            const resultado = descriptor.parsearDocumento(slug, contenido);
+            return resultado.ok ? resultado.documento.ramas : null;
+        },
+        ramaBase: dependencias.ajustes.ramaBaseDocumento,
+    });
+    return {
+        documentos,
+        avisos: invalidas.map(
+            ({ slug, rama }) => `Aviso: la versión de "${slug}" en la rama "${rama}" tiene errores de formato: se ignora.`,
+        ),
+    };
+}
+
 /** El mismo repositorio, con `autoresDePR` memorizado por número de PR. */
 function conAutoresDePRCompartidos(repositorio: RepositorioGit): RepositorioGit {
     const porNumero = new Map<number, AutorCommit[] | null>();
@@ -463,26 +513,33 @@ export async function sincronizarEntidad<
     // Una revisión anterior detectó que una carpeta "odd/tasks" faltante o
     // ilegible ya no se traga en silencio (antes devolvía [] y todo terminaba en "0 filas,
     // código 0, todo huérfano"). "listarDocumentos" ahora lanza en ese caso.
-    let documentosLeidos: Array<{ slug: string; contenido: string }>;
+    let documentosLeidos: DocumentoLeido[];
     try {
         documentosLeidos = dependencias.listarDocumentos(descriptor.carpeta);
     } catch (error) {
         return resumenDeErrorEntorno(log, entidad, mensajeDeError(error));
     }
 
-    const documentosParseados: D[] = [];
-    const erroresDeFormato: Array<{ slug: string; errores: string[] }> = [];
-
-    for (const { slug, contenido } of documentosLeidos) {
-        const resultado = descriptor.parsearDocumento(slug, contenido);
-        if (resultado.ok) documentosParseados.push(resultado.documento);
-        else erroresDeFormato.push({ slug, errores: resultado.errores });
-    }
-
-    // Lo que todo resumen lleva a partir de acá: los slugs leídos y, si hay,
-    // los avisos (que no son errores de formato ni cambian el código).
-    const slugsDocumentos = documentosLeidos.map((d) => d.slug);
-    const avisos = descriptor.avisosDocumentos?.(documentosParseados) ?? [];
+    // Se recalculan si una rama aporta versiones (ver más abajo, cuando ya
+    // se puede tocar git). Los cierres de abajo leen siempre el valor actual.
+    let documentosParseados: D[] = [];
+    let erroresDeFormato: Array<{ slug: string; errores: string[] }> = [];
+    let slugsDocumentos: string[] = [];
+    let avisos: AvisoDocumento[] = [];
+    const parsearDocumentos = () => {
+        documentosParseados = [];
+        erroresDeFormato = [];
+        for (const { slug, contenido } of documentosLeidos) {
+            const resultado = descriptor.parsearDocumento(slug, contenido);
+            if (resultado.ok) documentosParseados.push(resultado.documento);
+            else erroresDeFormato.push({ slug, errores: resultado.errores });
+        }
+        // Lo que todo resumen lleva a partir de acá: los slugs leídos y, si
+        // hay, los avisos (que no son errores de formato ni cambian el código).
+        slugsDocumentos = documentosLeidos.map((d) => d.slug);
+        avisos = descriptor.avisosDocumentos?.(documentosParseados) ?? [];
+    };
+    parsearDocumentos();
     const completar = (resumen: ResumenSincronizacion): ResumenSincronizacion => ({
         ...resumen,
         ...(avisos.length > 0 ? { avisos } : {}),
@@ -576,6 +633,20 @@ export async function sincronizarEntidad<
     // A partir de acá está autorizado tocar git/gh (dry-run con o sin
     // credenciales, o escritura real).
     //
+    // Primero, el avance en vivo: la versión de una rama editada después que
+    // la del checkout reemplaza a esta, y un documento que solo existe en una
+    // rama se suma.
+    const conRamas = incorporarVersionesDeRamas(descriptor, dependencias, documentosLeidos);
+    for (const aviso of conRamas.avisos) log(aviso);
+    if (conRamas.documentos.some((d) => d.rama !== undefined)) {
+        documentosLeidos = conRamas.documentos;
+        parsearDocumentos();
+    }
+    // Versión de una rama (no del checkout) por slug: su rama arma el enlace
+    // "Documento" y su fecha reemplaza la del checkout.
+    const versionDeRama = new Map(documentosLeidos.filter((d) => d.rama !== undefined).map((d) => [d.slug, d]));
+
+    //
     // Una revisión anterior detectó lo siguiente: antes de resolver anclas
     // de "commits", si algún documento las declara, hay que descartar dos problemas de ENTORNO que
     // NO son "el commit no existe" (error de formato de un documento
@@ -654,7 +725,10 @@ export async function sincronizarEntidad<
                 todosLosPRs,
                 fechasCommits: fechasCommitsPorSlug.get(documento.slug) ?? [],
                 autoresCommits,
-                fechaDocumento: dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
+                fechaDocumento:
+                    versionDeRama.get(documento.slug)?.fecha ??
+                    dependencias.repositorio.fechaDocumento(`${descriptor.carpeta}/${documento.slug}.md`),
+                ramaDocumento: versionDeRama.get(documento.slug)?.rama,
                 hoy,
                 ownerRepo,
                 idioma,

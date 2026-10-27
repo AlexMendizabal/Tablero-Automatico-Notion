@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Live progress from branches: each feature and task document is published
+  from its most recently edited version (newest last commit) between the
+  checkout and the live branches that the version itself declares in
+  `ramas`, or the base branch. Documents that only exist in a branch appear
+  on the board, and the "Documento" link points to the branch of the
+  published version. A branch version with format errors is ignored with a
+  warning, a checkout version with format errors is never replaced (its
+  error is always reported), and a git failure falls back to the checkout's
+  documents.
+
+### Changed
+
+- The sync workflow and the README's Action example now run on a push to any
+  branch (except `dependabot/**`) and always check out the default branch:
+  a push to another branch only wakes the sync up.
+
 ## [2.0.0] - 2026-10-08
 
 Advanced tasks with their own Notion database, contributors from git and

@@ -59,6 +59,7 @@ function puertosFalsos(
         fechaCommit: () => null,
         fechaDocumento: () => '2026-09-01T00:00:00Z',
         ramasConFecha: () => [],
+        versionesEnRamas: () => [],
         prs: () => [],
         ownerRepo: () => 'owner/repo',
         refRamaBase: () => null,

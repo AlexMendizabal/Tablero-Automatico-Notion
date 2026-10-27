@@ -2,6 +2,7 @@
  * Fixtures y fakes compartidos por los tests (documentos, filas, `ejecutar`
  * falso, fetch falso y un Notion falso completo en memoria).
  */
+import { createHash } from 'node:crypto';
 import { FORMATO_AUTORES } from '../../src/adapters/git-cli';
 import { type AutorCommit } from '../../src/core/contribuyentes';
 import { type FilaTablero, type PropiedadEsquemaNotion, type TareaDocumento } from '../../src/core/types';
@@ -91,11 +92,47 @@ export function crearEjecutarFalso(respuestas: {
     fallanRamas?: string[];
     /** PRs cuyo "gh pr view" falla. */
     fallanPRs?: number[];
+    /** Documentos por rama, para leer sus versiones ("for-each-ref
+     *  --format=%(refname)", "ls-tree", "log -1 <ref>", "cat-file"). Clave:
+     *  `HEAD` (el checkout), `<rama>` (local) u `origin/<rama>`; valor: ruta
+     *  (ej. `odd/tasks/x.md`) → contenido y fecha de su último commit. Sin
+     *  esta opción no hay ramas con documentos. */
+    documentosPorRama?: Record<string, Record<string, { contenido: string; fecha: string }>>;
 }): EjecutarComando {
     const ramaBase = respuestas.ramaBase === undefined ? 'origin' : respuestas.ramaBase;
+    const documentosPorRama = respuestas.documentosPorRama ?? {};
+    const claveDeRef = (ref: string) =>
+        ref.startsWith('refs/heads/')
+            ? ref.slice('refs/heads/'.length)
+            : ref.startsWith('refs/remotes/')
+              ? ref.slice('refs/remotes/'.length)
+              : ref;
+    const blobDe = (contenido: string) => createHash('sha1').update(contenido).digest('hex');
     return (comando: string, args: string[]) => {
         if (comando === 'git' && respuestas.gitNoDisponible) {
             throw new Error('ejecutar falso: spawn git ENOENT');
+        }
+        if (comando === 'git' && args[0] === 'for-each-ref' && args[1] === '--format=%(refname)') {
+            return Object.keys(documentosPorRama)
+                .filter((clave) => clave !== 'HEAD')
+                .map((clave) => (clave.startsWith('origin/') ? `refs/remotes/${clave}` : `refs/heads/${clave}`))
+                .join('\n');
+        }
+        if (comando === 'git' && args[0] === 'ls-tree') {
+            const carpeta = args[args.length - 1];
+            return Object.entries(documentosPorRama[claveDeRef(args[2])] ?? {})
+                .filter(([ruta]) => ruta.startsWith(carpeta))
+                .map(([ruta, { contenido }]) => `100644 blob ${blobDe(contenido)}\t${ruta}\0`)
+                .join('');
+        }
+        if (comando === 'git' && args[0] === 'log' && args[1] === '-1' && args[3]?.startsWith('refs/')) {
+            return documentosPorRama[claveDeRef(args[3])]?.[args[args.length - 1]]?.fecha ?? '';
+        }
+        if (comando === 'git' && args[0] === 'cat-file') {
+            for (const documentos of Object.values(documentosPorRama)) {
+                for (const { contenido } of Object.values(documentos)) if (blobDe(contenido) === args[2]) return contenido;
+            }
+            throw new Error(`ejecutar falso: blob inexistente: ${args[2]}`);
         }
         if (comando === 'git' && args[0] === 'rev-parse' && args[1] === '--is-shallow-repository') {
             return respuestas.superficial ? 'true' : 'false';

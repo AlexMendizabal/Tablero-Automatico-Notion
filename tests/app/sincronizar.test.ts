@@ -951,6 +951,7 @@ describe('sincronizar — puertos sin adaptadores', () => {
             fechaCommit: () => null,
             fechaDocumento: (ruta) => (ruta === 'odd/tasks/feature-x.md' ? '2026-09-01T00:00:00Z' : null),
             ramasConFecha: () => [],
+            versionesEnRamas: () => [],
             prs: () => [],
             ownerRepo: () => 'owner/repo',
             refRamaBase: () => null,

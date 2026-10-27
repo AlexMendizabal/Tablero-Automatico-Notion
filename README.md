@@ -97,7 +97,8 @@ name: Tablero de Notion
 
 on:
   push:
-    branches: [main]
+    # Cualquier rama: el avance de una rama se ve antes del merge.
+    branches: ['**', '!dependabot/**']
     paths: ['odd/tasks/**', 'odd/tareas/**']
   schedule:
     - cron: '0 11 * * *' # diario: "Días sin actividad" cambia con el tiempo
@@ -113,7 +114,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # obligatorio: anclas, fechas de ramas y contribuyentes necesitan el historial completo
+          ref: ${{ github.event.repository.default_branch || github.ref }} # siempre la rama por defecto; las demás se leen desde git
+          fetch-depth: 0 # obligatorio: anclas, fechas de ramas, versiones en ramas y contribuyentes necesitan el historial completo
           persist-credentials: false
       - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
         with:
@@ -306,9 +308,12 @@ se haya sincronizado sin problemas.
 El workflow `.github/workflows/sync-tablero-notion.yml` corre en cuatro
 disparadores:
 
-1. **`push`** a la rama base, cuando cambia algo relevante (un documento en
-   `odd/tasks/` u `odd/tareas/`, el propio script, el workflow, o `package.json`/
-   `package-lock.json`): sincroniza de verdad.
+1. **`push`** a cualquier rama (salvo las de dependabot), cuando cambia algo
+   relevante (un documento en `odd/tasks/` u `odd/tareas/`, el propio script,
+   el workflow, o `package.json`/`package-lock.json`): sincroniza de verdad.
+   El job siempre ejecuta el código de la rama por defecto: el push de otra
+   rama solo despierta el sync, que lee esa rama desde git (ver
+   [Avance en vivo desde las ramas](#avance-en-vivo-desde-las-ramas)).
 2. **`pull_request`** sobre esos mismos caminos: solo valida el formato de
    los documentos (`sync:dry`, sin credenciales), para cortar con un PR en
    rojo antes del merge si algún documento quedó mal formado.
@@ -502,6 +507,34 @@ ejemplo, la limpieza de una rama vieja actualiza el PR mergeado semanas
 atrás — y usarlo escondería features genuinamente estancadas detrás de una
 fecha reciente que no significa nada.
 
+### Avance en vivo desde las ramas
+
+El tablero no espera al merge. Por cada documento (de Features y de Tareas),
+compara la versión del checkout con la de cada rama viva (local u `origin/`)
+y publica **la editada más recientemente**, es decir, la de su último commit
+más nuevo. Así, cuando alguien marca una tarea en su rama y hace push, el
+progreso y el estado cambian en Notion sin esperar al PR.
+
+- **Qué ramas cuentan.** La versión de una rama se considera solo si esa
+  rama coincide con las `ramas` que declara esa misma versión, o si es la
+  rama base. Una rama ajena con una copia vieja del documento (por ejemplo,
+  una de dependabot) nunca lo pisa.
+- **Empates.** Si las fechas empatan, gana el checkout. Entre dos ramas,
+  gana la primera por nombre. Un documento nuevo del checkout, todavía sin
+  commitear, le gana a cualquier rama. Un documento ya commiteado con
+  cambios locales conserva la fecha de su último commit.
+- **Documentos nuevos.** Un documento que existe solo en una rama aparece en
+  el tablero, con el enlace "Documento" apuntando a esa rama. En general, el
+  enlace apunta a la rama de la versión publicada.
+- **Errores.** Una versión de una rama con errores de formato se ignora con
+  un aviso; el PR de esa rama la marca en rojo igual. Una versión del
+  checkout con errores de formato nunca se reemplaza por la de una rama, así
+  su error siempre se informa. Si git no puede leer las ramas, se avisa y se
+  usan solo los documentos del checkout.
+- **Configuración primero.** Las ramas se leen después de validar la
+  configuración (idioma, ID de base, credenciales), igual que el resto de
+  las llamadas a git.
+
 ## Contribuyentes
 
 La columna opcional "Contribuyentes" ("Contributors", multi-select) de
@@ -598,6 +631,15 @@ carpeta `skill/` en el directorio de skills del agente (por ejemplo
   (por la propiedad "Huella" / "Fingerprint") y repara la página completa.
 - Las filas huérfanas (páginas de Notion cuyo slug ya no tiene documento) se
   informan en la salida, pero nunca se borran automáticamente.
+- Una rama vieja que no se borró y declara un documento que después se
+  eliminó de la rama base lo vuelve a mostrar mientras la rama exista.
+- Si la rama base no tiene ningún documento de Tareas, las Tareas que solo
+  existen en ramas no aparecen hasta que se mergea la primera.
+- GitHub lee el disparador `push` del workflow de la propia rama: una rama
+  creada antes de este cambio no despierta el sync hasta que incorpore la
+  rama base. Igual se ve en la corrida diaria y en la de cualquier otro push.
+- Borrar una rama no dispara el sync: su avance sigue en el tablero hasta la
+  corrida siguiente.
 
 ## Contribuir
 

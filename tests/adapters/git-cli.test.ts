@@ -1,6 +1,7 @@
 /**
- * Tests del adaptador de git para los contribuyentes: el formato que se le
- * pide a git, su lectura defensiva y la resolución de la rama base. Nunca se
+ * Tests del adaptador de git para los contribuyentes y las versiones de los
+ * documentos en las ramas: el formato que se le pide a git, su lectura
+ * defensiva y la resolución de la rama base. Nunca se
  * corre git real: el comando es un falso que registra lo que recibe.
  */
 import {
@@ -8,6 +9,7 @@ import {
     obtenerAutoresDeCommit,
     obtenerAutoresDeRango,
     obtenerRefRamaBase,
+    obtenerVersionesEnRamas,
     parsearAutoresGit,
 } from '../../src/adapters/git-cli';
 import type { EjecutarComando } from '../../src/ports/sincronizar';
@@ -130,4 +132,81 @@ describe('obtenerAutoresDeCommit', () => {
 
 test('el formato separa campos con 0x1f, coautores con 0x1d y registros con 0x1e', () => {
     expect(FORMATO_AUTORES).toBe('%aN%x1f%aE%x1f%(trailers:key=Co-authored-by,valueonly,separator=%x1d)%x1e');
+});
+
+describe('obtenerVersionesEnRamas', () => {
+    const NUL = '\0';
+    /** Salida de `git ls-tree -z`: `<modo> <tipo> <objeto>\t<ruta>`, separadas por NUL. */
+    const lsTree = (entradas: Array<[tipo: string, objeto: string, ruta: string]>) =>
+        entradas.map(([tipo, objeto, ruta]) => `100644 ${tipo} ${objeto}\t${ruta}${NUL}`).join('');
+
+    function repositorioFalso() {
+        return registrador((args) => {
+            if (args[0] === 'for-each-ref') {
+                return 'refs/heads/feat/a\nrefs/remotes/origin/HEAD\nrefs/remotes/origin/feat/b\n';
+            }
+            if (args[0] === 'ls-tree' && args[2] === 'HEAD') {
+                return lsTree([
+                    ['blob', 'b-igual', 'odd/tasks/igual.md'],
+                    ['blob', 'b-viejo', 'odd/tasks/cambia.md'],
+                ]);
+            }
+            if (args[0] === 'ls-tree' && args[2] === 'refs/heads/feat/a') {
+                return lsTree([
+                    ['blob', 'b-igual', 'odd/tasks/igual.md'],
+                    ['blob', 'b-nuevo', 'odd/tasks/cambia.md'],
+                    ['blob', 'b-notas', 'odd/tasks/notas.txt'],
+                    ['tree', 't-sub', 'odd/tasks/sub'],
+                ]);
+            }
+            if (args[0] === 'ls-tree' && args[2] === 'refs/remotes/origin/feat/b') {
+                return lsTree([['blob', 'b-solo', 'odd/tasks/Solo-En-Rama.MD']]);
+            }
+            if (args[0] === 'log') return `2026-10-0${args[3] === 'refs/heads/feat/a' ? 1 : 2}T10:00:00Z\n`;
+            if (args[0] === 'cat-file') return `contenido de ${args[2]}\n`;
+            throw new Error(`no simulado: git ${args.join(' ')}`);
+        });
+    }
+
+    test('devuelve las versiones de cada rama que difieren del checkout, con su fecha y la rama sin "origin/"', () => {
+        const { ejecutar } = repositorioFalso();
+        expect(obtenerVersionesEnRamas(ejecutar, 'odd/tasks')).toEqual([
+            { rama: 'feat/a', slug: 'cambia', contenido: 'contenido de b-nuevo\n', fecha: '2026-10-01T10:00:00Z' },
+            { rama: 'feat/b', slug: 'Solo-En-Rama', contenido: 'contenido de b-solo\n', fecha: '2026-10-02T10:00:00Z' },
+        ]);
+    });
+
+    test('no lee los blobs idénticos al checkout, ni lo que no es un ".md", ni origin/HEAD', () => {
+        const { ejecutar, llamadas } = repositorioFalso();
+        obtenerVersionesEnRamas(ejecutar, 'odd/tasks');
+        expect(llamadas.filter((l) => l[1] === 'cat-file').map((l) => l[3])).toEqual(['b-nuevo', 'b-solo']);
+        expect(llamadas.some((l) => l.includes('refs/remotes/origin/HEAD') && l[1] !== 'for-each-ref')).toBe(false);
+        expect(llamadas).toContainEqual(['git', 'ls-tree', '-z', 'refs/heads/feat/a', '--', 'odd/tasks/']);
+        expect(llamadas).toContainEqual(['git', 'log', '-1', '--format=%cI', 'refs/heads/feat/a', '--', 'odd/tasks/cambia.md']);
+    });
+
+    test('una versión sin fecha de commit (git log vacío) se saltea sin leer su contenido', () => {
+        const { ejecutar, llamadas } = registrador((args) => {
+            if (args[0] === 'for-each-ref') return 'refs/heads/feat/a\n';
+            if (args[0] === 'ls-tree' && args[2] === 'HEAD') return '';
+            if (args[0] === 'ls-tree') return lsTree([['blob', 'b-x', 'odd/tasks/x.md']]);
+            if (args[0] === 'log') return '\n';
+            throw new Error(`no simulado: git ${args.join(' ')}`);
+        });
+        expect(obtenerVersionesEnRamas(ejecutar, 'odd/tasks')).toEqual([]);
+        expect(llamadas.some((l) => l[1] === 'cat-file')).toBe(false);
+    });
+
+    test('sin ramas no consulta nada más', () => {
+        const { ejecutar, llamadas } = registrador(() => '');
+        expect(obtenerVersionesEnRamas(ejecutar, 'odd/tasks')).toEqual([]);
+        expect(llamadas).toHaveLength(1);
+    });
+
+    test('si git falla, lanza: el llamador avisa y usa solo el checkout', () => {
+        const { ejecutar } = registrador(() => {
+            throw new Error('fatal: not a git repository');
+        });
+        expect(() => obtenerVersionesEnRamas(ejecutar, 'odd/tasks')).toThrow('not a git repository');
+    });
 });

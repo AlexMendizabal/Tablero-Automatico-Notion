@@ -43,6 +43,17 @@ export interface RamaConFecha {
     fecha: string; // ISO
 }
 
+/** Versión de un documento ODD en una rama viva, distinta de la del
+ *  checkout (ver `obtenerVersionesEnRamas`). */
+export interface VersionEnRama {
+    /** Nombre de la rama, sin `origin/`. */
+    rama: string;
+    slug: string;
+    contenido: string;
+    /** Fecha ISO del último commit que tocó el documento en esa rama. */
+    fecha: string;
+}
+
 export interface PullRequestInfo {
     number: number;
     headRefName: string;
@@ -169,6 +180,9 @@ export interface ParametrosConstruirFila {
      *  `null` si alguna fuente no se pudo leer. */
     autoresCommits?: AutorCommit[] | null;
     fechaDocumento: string | null;
+    /** Rama de la versión publicada cuando no es la del checkout (ver
+     *  `elegirVersionesMasRecientes`): el enlace "Documento" apunta a ella. */
+    ramaDocumento?: string;
     hoy: Date;
     ownerRepo: string;
     /** Idioma de los textos de la fila (ej. "2/3 tareas"). Por defecto `es`. */

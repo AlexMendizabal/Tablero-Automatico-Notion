@@ -195,7 +195,8 @@ export function construirFila(
 }
 
 /** Armado de la fila de un documento ODD de `carpeta` (relativa a la raíz
- *  del repositorio), con el enlace "Documento" sobre `ramaBaseDocumento`.
+ *  del repositorio), con el enlace "Documento" sobre `ramaBaseDocumento` o,
+ *  si la versión publicada viene de otra rama, sobre esa rama.
  *  Lo comparten Features y Tareas (ver `entities/tarea.ts`): mismas columnas,
  *  misma regla de estado. */
 export function construirFilaEnCarpeta(
@@ -245,7 +246,7 @@ export function construirFilaEnCarpeta(
         ramas: recortarParaNotion([...ramasQueMatchean.map((r) => r.nombre)].sort().join(', ')),
         diasSinActividad: diasSinActividad(actualizado, hoy),
         actualizado,
-        documento: `https://github.com/${ownerRepo}/blob/${ramaBaseDocumento}/${carpeta}/${documento.slug}.md`,
+        documento: `https://github.com/${ownerRepo}/blob/${parametros.ramaDocumento ?? ramaBaseDocumento}/${carpeta}/${documento.slug}.md`,
         huella: calcularHuella(documento.tareas),
         contribuyentes:
             parametros.autoresCommits === null
