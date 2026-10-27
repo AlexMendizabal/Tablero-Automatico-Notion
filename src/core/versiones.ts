@@ -42,7 +42,8 @@ export interface ResultadoElegirVersiones {
  * Una versión de una rama cuenta solo si esa rama coincide con las `ramas`
  * que declara esa misma versión, o si es la rama base: una rama ajena (ej.
  * de dependabot, con una copia vieja) nunca pisa el documento. Ante un
- * empate gana el checkout y, entre ramas, la primera por nombre.
+ * empate gana el checkout y, entre ramas, la primera por nombre. Una versión
+ * del checkout con errores de formato nunca se reemplaza.
  */
 export function elegirVersionesMasRecientes(parametros: ParametrosElegirVersiones): ResultadoElegirVersiones {
     const invalidas: ResultadoElegirVersiones['invalidas'] = [];
@@ -73,6 +74,10 @@ export function elegirVersionesMasRecientes(parametros: ParametrosElegirVersione
         const candidata = candidatasPorSlug.get(documento.slug);
         if (!candidata) return { ...documento };
         candidatasPorSlug.delete(documento.slug);
+        // Un checkout mal formado nunca se reemplaza: su error de formato
+        // tiene que verse (ej. en la validación de un PR) aunque una rama
+        // tenga una versión más nueva y válida.
+        if (parametros.ramasDeclaradas(documento.slug, documento.contenido) === null) return { ...documento };
         const fechaCheckout = parametros.fechaDelCheckout(documento.slug);
         const ganaLaRama = fechaCheckout !== null && milisegundos(candidata.fecha) > milisegundos(fechaCheckout);
         return ganaLaRama ? deRama(candidata) : { ...documento };

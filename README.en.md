@@ -509,13 +509,17 @@ PR.
   base branch. A foreign branch holding an old copy of the document (for
   example, a dependabot branch) never overrides it.
 - **Ties.** On a date tie, the checkout wins. Between two branches, the first
-  by name wins. An uncommitted document in the checkout beats any branch.
+  by name wins. A new, not yet committed document in the checkout beats any
+  branch. An already committed document with local edits keeps its last
+  commit date.
 - **New documents.** A document that only exists in a branch appears on the
   board, with its "Document" link pointing to that branch. In general, the
   link points to the branch of the published version.
 - **Errors.** A branch version with format errors is ignored with a warning;
-  that branch's PR still turns red. If git cannot read the branches, a
-  warning is printed and only the checkout's documents are used.
+  that branch's PR still turns red. A checkout version with format errors is
+  never replaced by a branch version, so its error is always reported. If
+  git cannot read the branches, a warning is printed and only the checkout's
+  documents are used.
 - **Configuration first.** Branches are read after the configuration is
   validated (language, database ID, credentials), like every other git call.
 
@@ -616,6 +620,12 @@ from `node_modules/tablero-automatico-notion/skill/SKILL.md`.
   base branch shows it again for as long as the branch exists.
 - If the base branch has no task documents at all, tasks that only exist in
   branches do not appear until the first one is merged.
+- GitHub reads the `push` trigger from the branch's own workflow file: a
+  branch created before this change does not wake the sync until it merges
+  in the base branch. It still shows up in the daily run and in any other
+  push's run.
+- Deleting a branch does not trigger the sync: its progress stays on the
+  board until the next run.
 
 ## Contributing
 

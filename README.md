@@ -520,14 +520,17 @@ progreso y el estado cambian en Notion sin esperar al PR.
   rama base. Una rama ajena con una copia vieja del documento (por ejemplo,
   una de dependabot) nunca lo pisa.
 - **Empates.** Si las fechas empatan, gana el checkout. Entre dos ramas,
-  gana la primera por nombre. Un documento sin commitear del checkout le gana
-  a cualquier rama.
+  gana la primera por nombre. Un documento nuevo del checkout, todavía sin
+  commitear, le gana a cualquier rama. Un documento ya commiteado con
+  cambios locales conserva la fecha de su último commit.
 - **Documentos nuevos.** Un documento que existe solo en una rama aparece en
   el tablero, con el enlace "Documento" apuntando a esa rama. En general, el
   enlace apunta a la rama de la versión publicada.
 - **Errores.** Una versión de una rama con errores de formato se ignora con
-  un aviso; el PR de esa rama la marca en rojo igual. Si git no puede leer
-  las ramas, se avisa y se usan solo los documentos del checkout.
+  un aviso; el PR de esa rama la marca en rojo igual. Una versión del
+  checkout con errores de formato nunca se reemplaza por la de una rama, así
+  su error siempre se informa. Si git no puede leer las ramas, se avisa y se
+  usan solo los documentos del checkout.
 - **Configuración primero.** Las ramas se leen después de validar la
   configuración (idioma, ID de base, credenciales), igual que el resto de
   las llamadas a git.
@@ -632,6 +635,11 @@ carpeta `skill/` en el directorio de skills del agente (por ejemplo
   eliminó de la rama base lo vuelve a mostrar mientras la rama exista.
 - Si la rama base no tiene ningún documento de Tareas, las Tareas que solo
   existen en ramas no aparecen hasta que se mergea la primera.
+- GitHub lee el disparador `push` del workflow de la propia rama: una rama
+  creada antes de este cambio no despierta el sync hasta que incorpore la
+  rama base. Igual se ve en la corrida diaria y en la de cualquier otro push.
+- Borrar una rama no dispara el sync: su avance sigue en el tablero hasta la
+  corrida siguiente.
 
 ## Contribuir
 

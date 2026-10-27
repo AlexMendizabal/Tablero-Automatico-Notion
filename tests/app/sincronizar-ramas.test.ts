@@ -140,6 +140,15 @@ describe('sincronizar — avance en vivo desde las ramas', () => {
         );
     });
 
+    test('una versión más nueva en una rama no tapa un documento mal formado del checkout (el PR queda en rojo)', async () => {
+        const roto = '---\nramas: ["feat/x*"]\n---\n\n# Feature X\n';
+        const { resumen, lineas } = await dryRun(ejecutarConRamas(), [{ slug: 'feature-x', contenido: roto }]);
+
+        expect(resumen.codigo).toBe(1);
+        expect(resumen.erroresDeFormato.map((e) => e.slug)).toEqual(['feature-x']);
+        expect(filaDe(lineas, 'feature-x')).toBeUndefined();
+    });
+
     test('en Notion, el enlace "Documento" apunta a la rama de la versión publicada', async () => {
         const features = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
         const notionTareas = crearNotionFalsoTareas();

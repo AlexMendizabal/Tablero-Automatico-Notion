@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ramas`, or the base branch. Documents that only exist in a branch appear
   on the board, and the "Documento" link points to the branch of the
   published version. A branch version with format errors is ignored with a
-  warning, and a git failure falls back to the checkout's documents.
+  warning, a checkout version with format errors is never replaced (its
+  error is always reported), and a git failure falls back to the checkout's
+  documents.
 
 ### Changed
 

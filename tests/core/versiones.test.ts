@@ -101,6 +101,14 @@ describe('elegirVersionesMasRecientes', () => {
         expect(invalidas).toEqual([{ slug: 'x', rama: 'feat/x-1' }]);
     });
 
+    test('una versión del checkout con errores de formato nunca se reemplaza: su error tiene que verse', () => {
+        const { documentos } = elegir({
+            delCheckout: [{ slug: 'x', contenido: contenido(null, 'checkout roto') }],
+            deRamas: [version('feat/x-1', '2026-10-12T00:00:00Z')],
+        });
+        expect(documentos).toEqual([{ slug: 'x', contenido: contenido(null, 'checkout roto') }]);
+    });
+
     test('sin versiones de ramas devuelve el checkout tal cual, sin consultar fechas', () => {
         const fechaDelCheckout = jest.fn(() => '2026-10-10T00:00:00Z');
         const { documentos } = elegir({ deRamas: [], fechaDelCheckout });
