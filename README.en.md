@@ -96,7 +96,8 @@ name: Notion board
 
 on:
   push:
-    branches: [main]
+    # Any branch: a branch's progress shows up before the merge.
+    branches: ['**', '!dependabot/**']
     paths: ['odd/tasks/**', 'odd/tareas/**']
   schedule:
     - cron: '0 11 * * *' # daily: "Days inactive" changes with time
@@ -112,7 +113,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # required: anchors, branch dates and contributors need full history
+          ref: ${{ github.event.repository.default_branch || github.ref }} # always the default branch; other branches are read from git
+          fetch-depth: 0 # required: anchors, branch dates, branch versions and contributors need full history
           persist-credentials: false
       - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
         with:
@@ -295,9 +297,12 @@ in Notion, even if the rest of the features synced without problems.
 The `.github/workflows/sync-tablero-notion.yml` workflow runs on four
 triggers:
 
-1. **`push`** to the base branch, when something relevant changes (a
-   document in `odd/tasks/` or `odd/tareas/`, the script itself, the workflow, or
-   `package.json`/`package-lock.json`): performs the real sync.
+1. **`push`** to any branch (except dependabot's), when something relevant
+   changes (a document in `odd/tasks/` or `odd/tareas/`, the script itself,
+   the workflow, or `package.json`/`package-lock.json`): performs the real
+   sync. The job always runs the default branch's code: a push to another
+   branch only wakes the sync up, which reads that branch from git (see
+   [Live progress from branches](#live-progress-from-branches)).
 2. **`pull_request`** on those same paths: only validates the documents'
    format (`sync:dry`, without credentials), so a PR fails before merge if a
    document is malformed.
@@ -490,6 +495,30 @@ with events that are not real work on the feature — for example, cleaning up
 an old branch updates a PR merged weeks earlier — and using it would hide
 genuinely stalled features behind a recent date that means nothing.
 
+### Live progress from branches
+
+The board does not wait for the merge. For each document (features and
+tasks), it compares the checkout's version with each live branch's version
+(local or `origin/`) and publishes **the most recently edited one**: the one
+whose last commit is newest. When someone checks off a task in their branch
+and pushes, the progress and status change in Notion without waiting for the
+PR.
+
+- **Which branches count.** A branch's version is considered only if that
+  branch matches the `ramas` declared by that same version, or if it is the
+  base branch. A foreign branch holding an old copy of the document (for
+  example, a dependabot branch) never overrides it.
+- **Ties.** On a date tie, the checkout wins. Between two branches, the first
+  by name wins. An uncommitted document in the checkout beats any branch.
+- **New documents.** A document that only exists in a branch appears on the
+  board, with its "Document" link pointing to that branch. In general, the
+  link points to the branch of the published version.
+- **Errors.** A branch version with format errors is ignored with a warning;
+  that branch's PR still turns red. If git cannot read the branches, a
+  warning is printed and only the checkout's documents are used.
+- **Configuration first.** Branches are read after the configuration is
+  validated (language, database ID, credentials), like every other git call.
+
 ## Contributors
 
 The optional "Contribuyentes" ("Contributors", multi-select) column of both
@@ -583,6 +612,10 @@ from `node_modules/tablero-automatico-notion/skill/SKILL.md`.
   "Huella" property) and repairs the whole page.
 - Orphan rows (Notion pages whose slug no longer has a document) are reported
   in the output, but never deleted automatically.
+- An old, undeleted branch that declares a document later removed from the
+  base branch shows it again for as long as the branch exists.
+- If the base branch has no task documents at all, tasks that only exist in
+  branches do not appear until the first one is merged.
 
 ## Contributing
 

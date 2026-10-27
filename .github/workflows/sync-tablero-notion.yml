@@ -5,12 +5,18 @@
 # solo validan): un push solo alcanza cuando cambia un documento,
 # pero el merge de un PR no toca ninguno y "Días sin actividad" cambia con el
 # paso del tiempo. Sin el cron diario, el tablero se congela entre ediciones.
+#
+# El push escucha cualquier rama (avance en vivo): el tablero publica la
+# versión de cada documento editada más recientemente entre la rama base y
+# las ramas vivas. Un push a una rama solo despierta el sync: el job siempre
+# ejecuta el código de la rama por defecto y lee las demás ramas desde git.
+# Las ramas de dependabot quedan afuera: no reciben los secrets de Actions.
 
 name: Tablero de features en Notion
 
 on:
   push:
-    branches: [main]
+    branches: ['**', '!dependabot/**']
     paths:
       - 'odd/tasks/**'
       - 'odd/tareas/**'
@@ -88,8 +94,13 @@ jobs:
             echo "::error title=Configuración faltante::Faltan los secrets NOTION_TOKEN y/o NOTION_TABLERO_DB_ID. Cargarlos en Settings > Secrets and variables > Actions."
             exit 1
           fi
+      # Siempre la rama por defecto, aunque el push venga de otra rama: así
+      # nunca escribe en Notion el código de una rama sin mergear. Las demás ramas
+      # se leen desde git (fetch-depth: 0 trae todas). El cron no trae
+      # "repository" en el evento: ahí github.ref ya es la rama por defecto.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch || github.ref }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

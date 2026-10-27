@@ -21,7 +21,7 @@ ramas: ["feat/live-branch-progress"]
 
 - [x] **T1 — Versiones de los documentos en las ramas (adaptador git)**: puerto `versionesEnRamas`, `ls-tree`/`show`/`log` por ref, sin leer los blobs idénticos al checkout; soporte en el ejecutar falso y tests.
 - [x] **T2 — Elección de la versión más reciente y enlace a su rama**: función pura en core, cableado en la orquestación para Features y Tareas, enlace "Documento" y fecha del documento de la versión ganadora; tests.
-- [ ] **T3 — Workflow en vivo y documentación**: push a cualquier rama con checkout de la rama por defecto; README es/en y CHANGELOG.
+- [x] **T3 — Workflow en vivo y documentación**: push a cualquier rama con checkout de la rama por defecto; README es/en y CHANGELOG.
 
 ## Log
 
@@ -31,3 +31,4 @@ ramas: ["feat/live-branch-progress"]
 - L4: limitación conocida. Si una rama vieja sin borrar declara un documento que después se borró de `main`, ese documento vuelve a aparecer mientras la rama exista.
 - T1 (7c76d19): adaptador `obtenerVersionesEnRamas` + puerto + falso. RED por compilación (función inexistente). Tests 421 → 426. Revisión RDD de riesgo alto (resiliencia y confiabilidad): aprobada y confirmada. Hallazgos no bloqueantes: versiones duplicadas local/origin (resuelto en T2: una por slug), salto sin fecha sin test (agregado en T2), todo-o-nada ante una falla de git (decisión: se avisa y se usa el checkout), cantidad de procesos git por rama y fechas en clones superficiales (el workflow usa fetch-depth: 0).
 - T2: las ramas se leen recién después de validar la configuración (idioma, ID de base, credenciales), para respetar el contrato "ninguna llamada a git antes de un error de configuración". Limitación: si el checkout no tiene ningún documento de Tareas, las Tareas que solo existen en ramas no se ven hasta el primer merge. Prueba de punta a punta con git real: una rama temporal `feat/ejemplo-feature-live` que marca T2 de `ejemplo-feature` la lleva de 1/3 a 2/3 ("QA pendiente"); al borrar la rama, vuelve a 1/3. Tests 426 → 442.
+- T2 (52b00e2). T3: workflow con push a cualquier rama salvo `dependabot/**` (no reciben los secrets de Actions: el job quedaría en rojo) y checkout de la rama por defecto; README es/en (disparadores, ejemplo de la Action, sección "Avance en vivo desde las ramas", límites conocidos) y CHANGELOG. Tests 443.
