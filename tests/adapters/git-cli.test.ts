@@ -185,6 +185,18 @@ describe('obtenerVersionesEnRamas', () => {
         expect(llamadas).toContainEqual(['git', 'log', '-1', '--format=%cI', 'refs/heads/feat/a', '--', 'odd/tasks/cambia.md']);
     });
 
+    test('una versión sin fecha de commit (git log vacío) se saltea sin leer su contenido', () => {
+        const { ejecutar, llamadas } = registrador((args) => {
+            if (args[0] === 'for-each-ref') return 'refs/heads/feat/a\n';
+            if (args[0] === 'ls-tree' && args[2] === 'HEAD') return '';
+            if (args[0] === 'ls-tree') return lsTree([['blob', 'b-x', 'odd/tasks/x.md']]);
+            if (args[0] === 'log') return '\n';
+            throw new Error(`no simulado: git ${args.join(' ')}`);
+        });
+        expect(obtenerVersionesEnRamas(ejecutar, 'odd/tasks')).toEqual([]);
+        expect(llamadas.some((l) => l[1] === 'cat-file')).toBe(false);
+    });
+
     test('sin ramas no consulta nada más', () => {
         const { ejecutar, llamadas } = registrador(() => '');
         expect(obtenerVersionesEnRamas(ejecutar, 'odd/tasks')).toEqual([]);

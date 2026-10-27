@@ -89,6 +89,9 @@ export interface ParametrosFilaEntidad<D extends DocumentoODD = DocumentoODD> {
      *  alguna fuente no se pudo leer. */
     autoresCommits?: AutorCommit[] | null;
     fechaDocumento: string | null;
+    /** Rama de la versión publicada cuando no es la del checkout: el
+     *  enlace "Documento" apunta a ella. */
+    ramaDocumento?: string;
     hoy: Date;
     ownerRepo: string;
     /** Idioma de los textos de la fila. Por defecto `es`. */

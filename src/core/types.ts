@@ -180,6 +180,9 @@ export interface ParametrosConstruirFila {
      *  `null` si alguna fuente no se pudo leer. */
     autoresCommits?: AutorCommit[] | null;
     fechaDocumento: string | null;
+    /** Rama de la versión publicada cuando no es la del checkout (ver
+     *  `elegirVersionesMasRecientes`): el enlace "Documento" apunta a ella. */
+    ramaDocumento?: string;
     hoy: Date;
     ownerRepo: string;
     /** Idioma de los textos de la fila (ej. "2/3 tareas"). Por defecto `es`. */
