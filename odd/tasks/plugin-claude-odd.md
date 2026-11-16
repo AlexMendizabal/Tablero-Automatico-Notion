@@ -23,7 +23,7 @@ ramas: ["feat/plugin-claude-odd"]
 
 ## Tasks
 
-- [/] **T1 — Estados de tarea en parser, estado y cuerpo**: S3-S5, worker + parent (idioma del cuerpo en sincronizar.ts), commit 9c87e68; espera verificación independiente.
+- [x] **T1 — Estados de tarea en parser, estado y cuerpo**: S3-S5, worker + parent (idioma del cuerpo en sincronizar.ts), commit 9c87e68; verificación independiente OK (S3-S5 met), test de regresión en el commit de cierre.
 - [x] **T2 — Flag --validar**: S6, worker, commit 270c125.
 - [x] **T3 — Plugin de Claude Code (manifest, marketplace, skill, comandos, hook)**: S1-S2, S7-S8, worker, commit 68d3785.
 - [x] **T4 — Documentación README/CHANGELOG**: S9, inline (README.md) + worker (README.en.md, CHANGELOG; context backstop), commit de este cambio.
@@ -37,4 +37,5 @@ ramas: ["feat/plugin-claude-odd"]
 - L5 (decisión T3): el skill vive en `skill/SKILL.md` (publicado en npm) y se copia idéntico al plugin; un test exige que ambas copias sean iguales. El hook es un script Node (funciona en Windows) que corre `tablero-notion --validar` local o, si no hay, vía `npx`.
 - L7 (T3): 17 tests del plugin + 1 del parent (hook con un `tablero-notion` publicado sin `--validar` avisa y sale 0 en vez de bloquear). Corte de slice: tras 68d3785 la rama supera ~400 líneas; T1 (riesgo ítem 3) va en su propio commit para revisión aislada.
 - L8 (T1/T2): `--validar --dry-run` es error (exit 1). Todas descartadas con PRs abiertos → "Sin empezar" (sale de la precedencia). El idioma del tablero se conecta al cuerpo en `sincronizar.ts` (test RED→GREEN en tests/app/sincronizar.test.ts). Suite: 511/511, typecheck 0.
+- L9 (verificación T1, gentle-ai-verify): S3, S4 y S5 met, sin bloqueantes; huella y cuerpo de docs `[ ]`/`[x]` idénticos a 270c125 (54 comparaciones, 0 diferencias). No verificado por `--dry-run` real (gh sin autenticar en el entorno). Avisos: (1) todas descartadas con un PR abierto → "Sin empezar" (la spec no lo cubre); (2) líneas `- [-]`/`- [/]`/`- [!]` mal formadas que antes se ignoraban ahora son error de formato (intencional por S3). Sus sondas quedan en tests/core/estados-tarea-regresion.test.ts.
 - L6 (rutas): T1, T2 y T3 son unidades independientes con superficies disjuntas → escritores en paralelo. T4 inline al final. Riesgo: T1 cambia el contrato de formato que consumen los documentos y el tablero (ítem 3) → verificador independiente.
