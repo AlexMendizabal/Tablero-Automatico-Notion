@@ -883,6 +883,7 @@ export async function sincronizarEntidad<
             dataSourceId,
             traducir(resto),
             documento.tareas,
+            idioma,
         );
         await cliente.actualizarPropiedades(pageId, traducir(huella));
         paginasPorSlug.set(fila.slug, pageId);
@@ -902,7 +903,7 @@ export async function sincronizarEntidad<
         if (!documento) continue;
         const { huella, resto } = separarHuella(descriptor.claveHuella, valores);
         await cliente.actualizarPropiedades(item.pageId, traducir(resto));
-        await cliente.reescribirCuerpo(item.pageId, documento.tareas);
+        await cliente.reescribirCuerpo(item.pageId, documento.tareas, idioma);
         await cliente.actualizarPropiedades(item.pageId, traducir(huella));
         cuerposReescritos++;
     }

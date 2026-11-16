@@ -89,6 +89,7 @@ describe('parsearDocumento', () => {
                     descripcion: 'hecho, 2026-08-25.',
                     hecha: true,
                     esQA: false,
+                    estado: 'hecha',
                 },
                 {
                     id: 'QA1',
@@ -96,6 +97,7 @@ describe('parsearDocumento', () => {
                     descripcion: '',
                     hecha: false,
                     esQA: true,
+                    estado: 'pendiente',
                 },
             ]);
         }
@@ -146,8 +148,15 @@ describe('parsearDocumento', () => {
             expect(resultado.documento.ramas).toEqual(['feat/x']);
             expect(resultado.documento.titulo).toBe('Feature X');
             expect(resultado.documento.tareas).toEqual([
-                { id: 'T1', nombre: 'Uno', descripcion: 'hace algo.', hecha: true, esQA: false },
-                { id: 'QA1', nombre: 'Smoke test', descripcion: 'probar a mano.', hecha: false, esQA: true },
+                { id: 'T1', nombre: 'Uno', descripcion: 'hace algo.', hecha: true, esQA: false, estado: 'hecha' },
+                {
+                    id: 'QA1',
+                    nombre: 'Smoke test',
+                    descripcion: 'probar a mano.',
+                    hecha: false,
+                    esQA: true,
+                    estado: 'pendiente',
+                },
             ]);
         }
     });

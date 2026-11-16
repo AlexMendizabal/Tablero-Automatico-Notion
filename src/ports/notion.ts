@@ -2,6 +2,7 @@
  * Puerto hacia Notion: el `fetch` inyectable, el reloj de espera y el
  * cliente que usa la orquestación.
  */
+import type { Idioma } from '../core/i18n';
 import type { PropiedadEsquemaNotion, PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
 
 export type FetchInyectado = (
@@ -30,12 +31,15 @@ export interface ClienteNotion {
     ): Promise<Array<{ id: string; properties: PropiedadesNotionBrutas; createdTime: string }>>;
     /** `propiedades` (ya con los nombres visibles del idioma del tablero)
      *  puede venir SIN la huella: el llamador la escribe aparte, al final,
-     *  una vez que el cuerpo quedó completo (ver "Orquestación"). */
+     *  una vez que el cuerpo quedó completo (ver "Orquestación").
+     *  `idioma` (por defecto `es`) es el de los prefijos de estado de las
+     *  tareas en el cuerpo (ej. "(en curso) "). */
     crearPagina(
         dataSourceId: string,
         propiedades: PropiedadesNotionBrutas,
         tareas: TareaDocumento[],
+        idioma?: Idioma,
     ): Promise<string>;
     actualizarPropiedades(pageId: string, propiedades: PropiedadesNotionBrutas): Promise<void>;
-    reescribirCuerpo(pageId: string, tareas: TareaDocumento[]): Promise<void>;
+    reescribirCuerpo(pageId: string, tareas: TareaDocumento[], idioma?: Idioma): Promise<void>;
 }

@@ -3,8 +3,9 @@
  * concreto y la lectura de páginas existentes.
  */
 import { mensajeDeError } from '../core/errores';
+import type { Idioma } from '../core/i18n';
 import { recortarParaNotion } from '../core/row';
-import type { PropiedadEsquemaNotion, PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
+import type { EstadoTarea, PropiedadEsquemaNotion, PropiedadesNotionBrutas, TareaDocumento } from '../core/types';
 import type { ClienteNotion, Dormir, FetchInyectado } from '../ports/notion';
 
 // ---------------------------------------------------------------------------
@@ -280,8 +281,16 @@ async function solicitarNotion(
  *  la página de Notion. El texto se recorta con `recortarParaNotion`: el
  *  mismo límite de 2000 caracteres por objeto de texto que rige las
  *  propiedades aplica también al contenido de un bloque. */
-function bloqueParaTarea(tarea: TareaDocumento): unknown {
-    const contenido = recortarParaNotion(`${tarea.id} — ${tarea.nombre}: ${tarea.descripcion}`);
+/** Prefijo del texto del bloque para los estados que un `to_do` no puede
+ *  mostrar (solo "hecha" va tildada). */
+const PREFIJO_ESTADO_POR_IDIOMA: Readonly<Record<Idioma, Partial<Record<EstadoTarea, string>>>> = {
+    es: { en_curso: '(en curso) ', bloqueada: '(bloqueada) ', descartada: '(descartada) ' },
+    en: { en_curso: '(in progress) ', bloqueada: '(blocked) ', descartada: '(dropped) ' },
+};
+
+function bloqueParaTarea(tarea: TareaDocumento, idioma: Idioma): unknown {
+    const prefijo = (tarea.estado && PREFIJO_ESTADO_POR_IDIOMA[idioma][tarea.estado]) ?? '';
+    const contenido = recortarParaNotion(`${prefijo}${tarea.id} — ${tarea.nombre}: ${tarea.descripcion}`);
     return {
         type: 'to_do',
         to_do: {
@@ -339,7 +348,8 @@ export function crearClienteNotion(
             return paginas;
         },
 
-        async crearPagina(dataSourceId, propiedades, tareas) {
+        async crearPagina(dataSourceId, propiedades, tareas, idioma = 'es') {
+            const bloque = (tarea: TareaDocumento) => bloqueParaTarea(tarea, idioma);
             // Alta en lotes (arreglo de una revisión anterior): el primer lote viaja en el
             // POST de creación; el resto se agrega con el mismo tamaño de lote
             // que "reescribirCuerpo" (límite real de la API: 100 por request).
@@ -350,7 +360,7 @@ export function crearClienteNotion(
             const respuesta = await pedir('POST', '/pages', false, {
                 parent: { type: 'data_source_id', data_source_id: dataSourceId },
                 properties: propiedades,
-                children: primerLote.map(bloqueParaTarea),
+                children: primerLote.map(bloque),
             });
             if (!respuesta.id) {
                 throw new Error('Notion: la respuesta de creación de página no incluyó "id".');
@@ -358,7 +368,7 @@ export function crearClienteNotion(
             const pageId = respuesta.id;
 
             for (let i = 0; i < resto.length; i += TAMANO_LOTE_BLOQUES) {
-                const lote = resto.slice(i, i + TAMANO_LOTE_BLOQUES).map(bloqueParaTarea);
+                const lote = resto.slice(i, i + TAMANO_LOTE_BLOQUES).map(bloque);
                 await pedir('PATCH', `/blocks/${pageId}/children`, false, { children: lote });
             }
 
@@ -370,7 +380,7 @@ export function crearClienteNotion(
             await pedir('PATCH', `/pages/${pageId}`, true, { properties: propiedades });
         },
 
-        async reescribirCuerpo(pageId, tareas) {
+        async reescribirCuerpo(pageId, tareas, idioma = 'es') {
             // Un arreglo posterior fijó este orden: se listan los hijos
             // VIEJOS primero, se agregan los bloques NUEVOS, y RECIÉN AHÍ se
             // borran los viejos — nunca al revés. Con el orden anterior
@@ -395,7 +405,7 @@ export function crearClienteNotion(
             }
 
             for (let i = 0; i < tareas.length; i += TAMANO_LOTE_BLOQUES) {
-                const lote = tareas.slice(i, i + TAMANO_LOTE_BLOQUES).map(bloqueParaTarea);
+                const lote = tareas.slice(i, i + TAMANO_LOTE_BLOQUES).map((tarea) => bloqueParaTarea(tarea, idioma));
                 // Agregar hijos NO es idempotente (ver "solicitarNotion").
                 await pedir('PATCH', `/blocks/${pageId}/children`, false, { children: lote });
             }

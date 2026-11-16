@@ -9,12 +9,20 @@ import type { Idioma } from './i18n';
 // Tipos del núcleo puro
 // ---------------------------------------------------------------------------
 
+/** Estado de una tarea según su marcador: `[ ]` pendiente, `[/]` en curso,
+ *  `[!]` bloqueada, `[-]` descartada y `[x]`/`[X]` hecha. */
+export type EstadoTarea = 'pendiente' | 'en_curso' | 'bloqueada' | 'descartada' | 'hecha';
+
 export interface TareaDocumento {
     id: string;
     nombre: string;
     descripcion: string;
+    /** `true` solo con `[x]`/`[X]`. */
     hecha: boolean;
     esQA: boolean;
+    /** Estado del marcador (el parser siempre lo completa). Ausente →
+     *  se deduce de `hecha` (`hecha` o `pendiente`), ver `estadoDeTarea`. */
+    estado?: EstadoTarea;
 }
 
 export interface DocumentoODD {
@@ -36,7 +44,7 @@ export type ResultadoParseoDocumento =
 /** Estado interno de una feature. Sus valores coinciden con los nombres en
  *  español por compatibilidad hacia atrás; lo que se escribe en Notion sale
  *  siempre de `TEXTOS_POR_IDIOMA[idioma].estados`. */
-export type Estado = 'Terminada' | 'QA pendiente' | 'Sin empezar' | 'En curso';
+export type Estado = 'Terminada' | 'Bloqueada' | 'QA pendiente' | 'Sin empezar' | 'En curso';
 
 export interface RamaConFecha {
     nombre: string;

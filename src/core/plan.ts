@@ -4,6 +4,7 @@
  */
 import * as crypto from 'node:crypto';
 
+import { estadoDeTarea } from './status';
 import type { DuplicadoSlug, FilaTablero, PaginaExistente, PlanSync, TareaDocumento } from './types';
 
 // ---------------------------------------------------------------------------
@@ -11,9 +12,18 @@ import type { DuplicadoSlug, FilaTablero, PaginaExistente, PlanSync, TareaDocume
 // ---------------------------------------------------------------------------
 
 /** sha256 de la lista normalizada de tareas `id|hecha|nombre|descripción`.
- *  Alternar un solo checkbox cambia la huella; el mismo listado la conserva. */
+ *  Alternar un solo checkbox cambia la huella; el mismo listado la conserva.
+ *  Para `[ ]` y `[x]` el segundo campo es `false`/`true`, como siempre (la
+ *  huella de los cuerpos existentes no cambia); para en curso, bloqueada y
+ *  descartada es el nombre del estado, así que esos estados sí la cambian. */
 export function calcularHuella(tareas: TareaDocumento[]): string {
-    const normalizado = tareas.map((t) => `${t.id}|${t.hecha}|${t.nombre}|${t.descripcion}`).join('\n');
+    const normalizado = tareas
+        .map((t) => {
+            const estado = estadoDeTarea(t);
+            const campo = estado === 'pendiente' || estado === 'hecha' ? String(t.hecha) : estado;
+            return `${t.id}|${campo}|${t.nombre}|${t.descripcion}`;
+        })
+        .join('\n');
     return crypto.createHash('sha256').update(normalizado, 'utf8').digest('hex');
 }
 
