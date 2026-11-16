@@ -371,6 +371,12 @@ completo — cuántas páginas crearía, cuántas actualizaría, a cuántas les
 reescribiría el cuerpo, y cuáles quedarían huérfanas — sin escribir nada
 todavía.
 
+**`tablero-notion --validar`**: solo lee y parsea los documentos de
+Features y de Tareas, sin leer el `.env`, sin Notion y sin `git` ni `gh`.
+Imprime los errores de formato y termina con código 1 si hay alguno (o si
+falta la carpeta). No detecta commits inexistentes en `commits`: eso queda
+para `--dry-run`. No se combina con `--dry-run`.
+
 **`npm run sync`**: ejecuta la sincronización real contra Notion. Termina con
 código de salida distinto de cero si hubo algún error de formato en un
 documento o algún slug duplicado en Notion, aunque el resto de las features
@@ -473,6 +479,22 @@ Reglas:
   prueba manual a los efectos de derivar el estado. El ID va en negrita al
   principio del checkbox, separado del nombre por una raya (`—`, no un
   guion común); la descripción después de los dos puntos es opcional.
+- **Estado de cada tarea, en el checkbox**: cinco marcadores, los mismos
+  estados que usa Gentle (pending, in_progress, blocked, dropped, done):
+
+  | Marcador | Estado | Efecto |
+  |---|---|---|
+  | `- [ ]` | pendiente | Cuenta en el total del progreso. |
+  | `- [/]` | en curso | Cuenta en el total; la feature deja de estar "Sin empezar". |
+  | `- [!]` | bloqueada | Cuenta en el total; la feature queda **Bloqueada**. |
+  | `- [-]` | descartada | No cuenta en el progreso ni en el estado. |
+  | `- [x]` o `- [X]` | hecha | Cuenta como hecha. |
+
+  En el cuerpo de la página de Notion solo la hecha va tildada; en curso,
+  bloqueada y descartada llevan un prefijo ("(en curso)", "(bloqueada)",
+  "(descartada)"; en inglés "(in progress)", "(blocked)", "(dropped)").
+  Cualquier otro contenido entre corchetes (por ejemplo `- [?]`) no es una
+  tarea.
 - **Los bloques de código se ignoran**: un ` ```markdown ` con un ejemplo de
   frontmatter o de sección de tareas adentro no cuenta como el frontmatter
   ni la sección reales del documento.
@@ -561,14 +583,16 @@ Comportamiento:
 
 ## Cómo se deriva el estado
 
-La propiedad de estado ("Estado" / "Status") toma uno de cuatro valores,
-escrito en el idioma del tablero, en este orden de precedencia:
+La propiedad de estado ("Estado" / "Status") toma uno de cinco valores,
+escrito en el idioma del tablero, en este orden de precedencia. Las tareas
+descartadas (`- [-]`) no cuentan para ninguna regla:
 
 | Español (`es`) | Inglés (`en`) | Cuándo |
 |---|---|---|
-| **Terminada** | **Done** | Hay al menos una tarea, todas están marcadas como hechas, y no queda ningún PR abierto sobre las ramas de la feature. |
+| **Terminada** | **Done** | Hay al menos una tarea, todas las no descartadas están hechas (o todas están descartadas: progreso 0/0), y no queda ningún PR abierto sobre las ramas de la feature. |
+| **Bloqueada** | **Blocked** | Alguna tarea no descartada está bloqueada (`- [!]`). |
 | **QA pendiente** | **QA pending** | Quedan tareas sin hacer, y todas las que quedan sin hacer son de QA (prefijo `QA`). |
-| **Sin empezar** | **Not started** | Ninguna tarea está marcada como hecha. |
+| **Sin empezar** | **Not started** | Ninguna tarea está hecha ni en curso (`- [/]`). |
 | **En curso** | **In progress** | Cualquier otra combinación (por ejemplo, con tareas hechas y no-QA pendientes, o con todo hecho pero un PR todavía abierto). |
 
 La fecha de "Actualizado" (y de ahí "Días sin actividad") toma la más
@@ -669,11 +693,40 @@ ana-gh <ana@ejemplo.com> Ana Pérez <ana@personal.com>
 
 ## Skill para agentes
 
+### Plugin de Claude Code
+
+Este repositorio es también un marketplace de Claude Code con el plugin
+`tablero`:
+
+```text
+/plugin marketplace add AlexMendizabal/Tablero-Automatico-Notion
+/plugin install tablero@tablero-automatico-notion
+```
+
+Trae:
+
+- **La skill `tablero-odd-documents`**: el formato único de documento ODD que
+  cumple a la vez el contrato de Gentle (`## Specs`, `## Tasks` con `S#`,
+  ruta y commit, `## Log`) y el de este sync (frontmatter `ramas`, título,
+  checkboxes `**T1 — Nombre**`). Un documento de Gentle sin frontmatter ni
+  checkboxes hace fallar el sync; con la skill, el agente escribe el formato
+  híbrido desde el principio.
+- **`/tablero:validar`**: corre `tablero-notion --validar` y explica los
+  errores.
+- **`/tablero:sync`**: corre `--dry-run`, muestra el plan y solo sincroniza
+  de verdad si se confirma.
+- **Un hook** que, después de cada edición de un `.md` en `odd/tasks/` u
+  `odd/tareas/`, corre `--validar` y le muestra al agente los errores de
+  formato. Usa el `tablero-notion` instalado en el proyecto o, si no hay,
+  `npx`. Con una versión publicada sin `--validar`, avisa y no bloquea.
+
+### Skill suelta
+
 El paquete incluye una skill para agentes en `skill/SKILL.md` (también en
 este repositorio) que le enseña a un agente de IA el contrato de los
 documentos: dónde viven los documentos de features y de tareas, las reglas
 del frontmatter, el formato de cada línea de tarea, cómo se derivan el
-estado y los contribuyentes, y cómo validar con `--dry-run`. Copiar la
+estado y los contribuyentes, y cómo validar con `--validar` y `--dry-run`. Copiar la
 carpeta `skill/` en el directorio de skills del agente (por ejemplo
 `.claude/skills/tablero-odd-documents/` o
 `~/.claude/skills/tablero-odd-documents/`), o indicarle al agente el archivo

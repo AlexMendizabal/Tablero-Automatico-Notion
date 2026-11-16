@@ -20,9 +20,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   warning, a checkout version with format errors is never replaced (its
   error is always reported), and a git failure falls back to the checkout's
   documents.
+- Claude Code plugin `tablero`, installable from this repository's
+  marketplace (`/plugin marketplace add
+  AlexMendizabal/Tablero-Automatico-Notion`): the `tablero-odd-documents`
+  skill, the `/tablero:validar` and `/tablero:sync` commands, and a hook
+  that validates documents in `odd/tasks/` and `odd/tareas/` after each
+  edit.
+- `--validar` flag: only reads and parses the feature and task documents
+  (no `.env`, Notion, `git` or `gh`), prints the format errors and exits
+  with code 1 if there is any.
+- Task state markers `- [/]` (in progress), `- [!]` (blocked) and `- [-]`
+  (dropped). A blocked non-dropped task sets the new Blocked/Bloqueada
+  status, and dropped tasks are excluded from progress and status.
 
 ### Changed
 
+- The `tablero-odd-documents` skill now teaches the hybrid ODD format,
+  compatible with Gentle (`## Specs`, `## Tasks`, `## Log`) and with this
+  sync (`ramas` frontmatter, title, `**T1 — Name**` checkboxes).
 - The sync workflow and the README's Action example now run on a push to any
   branch (except `dependabot/**`) and always check out the default branch:
   a push to another branch only wakes the sync up.
