@@ -110,8 +110,24 @@ export function ejecutarValidacion(cwd, { env = process.env, timeoutMs = TIEMPO_
         hijo.stderr?.on('data', (parte) => {
             stderr += parte;
         });
-        hijo.on('error', (error) => terminar({ error, status: null, signal: null }));
-        hijo.on('close', (status, signal) => terminar({ error: undefined, status, signal }));
+        // Same error texts as the previous spawnSync version, so the Claude
+        // hook's warnings do not change: "spawnSync <cmd> ENOENT" and
+        // "spawnSync <cmd> ETIMEDOUT".
+        const inicio = Date.now();
+        hijo.on('error', (error) =>
+            terminar({
+                error: { message: String(error?.message ?? error).replace(/^spawn /, 'spawnSync ') },
+                status: null,
+                signal: null,
+            }),
+        );
+        hijo.on('close', (status, signal) => {
+            if (status === null && signal && Date.now() - inicio >= timeoutMs) {
+                terminar({ error: { message: `spawnSync ${hijo.spawnfile} ETIMEDOUT` }, status: null, signal });
+                return;
+            }
+            terminar({ error: undefined, status, signal });
+        });
     });
 }
 
