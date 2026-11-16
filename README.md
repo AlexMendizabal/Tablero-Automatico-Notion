@@ -141,6 +141,83 @@ a `gh` el `github.token` del workflow, así que el job necesita
 > job. Conviene correrla en su propio job (como en el ejemplo), o después de
 > los pasos que necesiten otra versión de Node.
 
+### Varios proyectos: un tablero por repositorio
+
+Cada tablero de Notion pertenece a **un solo** repositorio (o a un solo
+paquete de un monorepo). Las filas se identifican por el Slug, y una página
+sin documento en el repositorio que corre el sync se reporta como huérfana:
+si dos repositorios escriben en la misma base, sus slugs pueden pisarse y
+cada uno ve las filas del otro como huérfanas. Por eso, una base de Notion
+por repositorio o paquete.
+
+**Microservicios (un repositorio por servicio).** Copiar el workflow de
+arriba en cada repositorio, cada uno con su propia base de Notion y sus
+propios secrets. No hace falta nada más.
+
+**Monorepo con una sola carpeta de documentos en la raíz.** Igual que un
+repositorio común: el workflow de arriba, sin cambios.
+
+**Monorepo con documentos por paquete** (`apps/web/odd/tasks`,
+`services/pagos/odd/tasks`, ...). Una corrida por paquete con una `matrix`,
+cada una con su carpeta y su base:
+
+```yaml
+name: Tablero de Notion
+
+on:
+  push:
+    branches: ['**', '!dependabot/**']
+    paths: ['**/odd/tasks/**', '**/odd/tareas/**']
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # un paquete que falla no frena a los demás
+      matrix:
+        include:
+          - carpeta: apps/web
+            secret_db: NOTION_DB_WEB
+          - carpeta: services/pagos
+            secret_db: NOTION_DB_PAGOS
+    # Dos corridas nunca escriben a la vez sobre la misma base.
+    concurrency: tablero-${{ matrix.secret_db }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
+        with:
+          notion-token: ${{ secrets.NOTION_TOKEN }}
+          notion-database-id: ${{ secrets[matrix.secret_db] }}
+          features-folder: ${{ matrix.carpeta }}/odd/tasks
+          tasks-folder: ${{ matrix.carpeta }}/odd/tareas # siempre la del paquete, nunca la de la raíz
+```
+
+Notas para el monorepo:
+
+- Cada paquete necesita su propia base de Notion (y su secret con el ID).
+  Un mismo token puede servir para todas si la integración está compartida
+  con cada base.
+- Definir siempre `tasks-folder` por paquete: sin él se lee `odd/tareas` de
+  la raíz, y todos los paquetes compartirían las mismas tareas. Si el
+  paquete no tiene tareas, la carpeta puede no existir.
+- Los slugs solo tienen que ser únicos dentro de cada paquete.
+- Ramas y pull requests son del repositorio entero: el patrón de `ramas` de
+  cada documento decide qué ramas cuentan para esa feature, así que conviene
+  usar prefijos por paquete (por ejemplo `feat/pagos-*`).
+- Para validar en los pull requests, la misma `matrix` con `dry-run: true` y
+  sin secrets.
+
 ### Opción 2: npm / npx
 
 El paquete es `tablero-automatico-notion`; su comando es `tablero-notion`.

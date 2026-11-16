@@ -139,6 +139,82 @@ only set when non-empty). The action passes the workflow's `github.token` to
 > in its own job (as above), or after any steps that need another Node
 > version.
 
+### Several projects: one board per repository
+
+Each Notion board belongs to **a single** repository (or a single package of
+a monorepo). Rows are identified by their Slug, and a page with no document
+in the repository running the sync is reported as an orphan: if two
+repositories write to the same database, their slugs can overwrite each
+other and each one sees the other's rows as orphans. So: one Notion database
+per repository or package.
+
+**Microservices (one repository per service).** Copy the workflow above into
+each repository, each with its own Notion database and its own secrets.
+Nothing else is needed.
+
+**Monorepo with a single documents folder at the root.** Same as a regular
+repository: the workflow above, unchanged.
+
+**Monorepo with documents per package** (`apps/web/odd/tasks`,
+`services/payments/odd/tasks`, ...). One run per package with a `matrix`,
+each with its own folder and database:
+
+```yaml
+name: Notion board
+
+on:
+  push:
+    branches: ['**', '!dependabot/**']
+    paths: ['**/odd/tasks/**', '**/odd/tareas/**']
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one failing package does not stop the others
+      matrix:
+        include:
+          - folder: apps/web
+            db_secret: NOTION_DB_WEB
+          - folder: services/payments
+            db_secret: NOTION_DB_PAYMENTS
+    # Two runs never write to the same database at once.
+    concurrency: board-${{ matrix.db_secret }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
+        with:
+          notion-token: ${{ secrets.NOTION_TOKEN }}
+          notion-database-id: ${{ secrets[matrix.db_secret] }}
+          features-folder: ${{ matrix.folder }}/odd/tasks
+          tasks-folder: ${{ matrix.folder }}/odd/tareas # always the package's, never the root's
+```
+
+Monorepo notes:
+
+- Each package needs its own Notion database (and a secret with its ID). One
+  token can serve them all if the integration is shared with every database.
+- Always set `tasks-folder` per package: without it the root `odd/tareas` is
+  read, and every package would share the same tasks. If the package has no
+  tasks, the folder may be missing.
+- Slugs only need to be unique within each package.
+- Branches and pull requests belong to the whole repository: each document's
+  `ramas` pattern decides which branches count for that feature, so use
+  per-package prefixes (for example `feat/payments-*`).
+- To validate in pull requests, use the same `matrix` with `dry-run: true`
+  and no secrets.
+
 ### Option 2: npm / npx
 
 The package is `tablero-automatico-notion`; its command is `tablero-notion`.

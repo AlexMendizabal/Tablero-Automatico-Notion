@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- README guide for several projects: one board per repository for
+  microservices, and a per-package `matrix` workflow for monorepos.
 - Live progress from branches: each feature and task document is published
   from its most recently edited version (newest last commit) between the
   checkout and the live branches that the version itself declares in
