@@ -19,6 +19,7 @@ ramas: ["feat/plugin-claude-odd"]
 - **S6 — Validación rápida.** Elección: "Sí, --validar (recomendado)": "Solo lee y parsea odd/tasks y odd/tareas (sin .env, sin Notion, sin git/gh). No detecta commits inexistentes; eso queda para --dry-run."
 - **S7 — Comandos.** "Comandos /tablero:validar y /tablero:sync": "Slash commands que corren el dry-run o el sync real." (`/tablero:validar` usa `--validar`, ver S6).
 - **S8 — Hook.** "Hook de validación": "Al editar odd/tasks u odd/tareas, corre el dry-run y avisa si el doc quedó mal formado." (usa `--validar`, ver S6).
+- **S10 — Gentle Shell.** Pedido: "lo puedo agregar en gentle-shell" → "dale implementalo". Propuesta aceptada: el repo es también un paquete de Pi (sección `pi` en `package.json`): el mismo skill, comandos `/tablero-validar` y `/tablero-sync`, y una extensión que valida al editar `odd/tasks` u `odd/tareas` y le pasa el error al agente; instalable con `pi install` en la configuración de Gentle Shell (`~/.gentle-shell/agent`).
 - **S9 — Documentación.** README es/en, CHANGELOG y la ayuda del CLI describen el plugin, el formato híbrido, los estados y `--validar`.
 
 ## Tasks
@@ -27,6 +28,8 @@ ramas: ["feat/plugin-claude-odd"]
 - [x] **T2 — Flag --validar**: S6, worker, commit 270c125.
 - [x] **T3 — Plugin de Claude Code (manifest, marketplace, skill, comandos, hook)**: S1-S2, S7-S8, worker, commit 68d3785.
 - [x] **T4 — Documentación README/CHANGELOG**: S9, inline (README.md) + worker (README.en.md, CHANGELOG; context backstop), commit de este cambio.
+
+- [/] **T5 — Paquete de Pi para Gentle Shell (manifest, comandos, extensión)**: S10, S9, worker (context backstop), commit pendiente.
 
 ## Log
 
@@ -39,4 +42,5 @@ ramas: ["feat/plugin-claude-odd"]
 - L8 (T1/T2): `--validar --dry-run` es error (exit 1). Todas descartadas con PRs abiertos → "Sin empezar" (sale de la precedencia). El idioma del tablero se conecta al cuerpo en `sincronizar.ts` (test RED→GREEN en tests/app/sincronizar.test.ts). Suite: 511/511, typecheck 0.
 - L9 (verificación T1, gentle-ai-verify): S3, S4 y S5 met, sin bloqueantes; huella y cuerpo de docs `[ ]`/`[x]` idénticos a 270c125 (54 comparaciones, 0 diferencias). No verificado por `--dry-run` real (gh sin autenticar en el entorno). Avisos: (1) todas descartadas con un PR abierto → "Sin empezar" (la spec no lo cubre); (2) líneas `- [-]`/`- [/]`/`- [!]` mal formadas que antes se ignoraban ahora son error de formato (intencional por S3). Sus sondas quedan en tests/core/estados-tarea-regresion.test.ts.
 - L10 (usuario): "realiza commit y prs" → elección "PRs encadenados a main"; bloqueado: la cuenta JimReflos tiene solo lectura en el upstream y el token no puede crear forks (HTTP 403). Luego: "podemos ya instalralo y probarlo con mis proyectos" → plugin instalado desde el marketplace local (scope user), TABLERO_NOTION_BIN apunta al build local; commit 282ecdc hace que los comandos lo usen.
+- L11 (usuario): "lo puedo agregar en gentle-shell" / "dale implementalo" → T5.
 - L6 (rutas): T1, T2 y T3 son unidades independientes con superficies disjuntas → escritores en paralelo. T4 inline al final. Riesgo: T1 cambia el contrato de formato que consumen los documentos y el tablero (ítem 3) → verificador independiente.
