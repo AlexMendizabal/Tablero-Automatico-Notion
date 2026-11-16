@@ -9,13 +9,14 @@
  * `import.meta`: Jest transpila a CommonJS).
  *
  * Uso:
- *   npx tsx src/entrypoints/cli.ts [--dry-run]
- *   tablero-notion [--dry-run]   (instalado desde npm; compilado en dist/)
+ *   npx tsx src/entrypoints/cli.ts [--dry-run | --validar]
+ *   tablero-notion [--dry-run | --validar]   (instalado desde npm; compilado en dist/)
  */
 import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 
 import { sincronizar } from '../app/sincronizar';
+import { validar } from '../app/validar';
 import type { AjustesProyecto } from '../core/ajustes';
 import type { Idioma } from '../core/i18n';
 import { AJUSTES_PROYECTO, cargarCredenciales, leerBoardLanguage } from '../adapters/config';
@@ -99,17 +100,22 @@ Sync del estado de las features (odd/tasks/*.md) y, si las hay, de las
 tareas (odd/tareas/*.md) hacia Notion.
 
 Uso:
-  npm run sync -- [--dry-run] [--ayuda]
-  npx tsx src/entrypoints/cli.ts [--dry-run] [--ayuda]
-  tablero-notion [--dry-run] [--ayuda]   (instalado desde npm)
+  npm run sync -- [--dry-run | --validar] [--ayuda]
+  npx tsx src/entrypoints/cli.ts [--dry-run | --validar] [--ayuda]
+  tablero-notion [--dry-run | --validar] [--ayuda]   (instalado desde npm)
 
   --dry-run   No escribe en Notion. Sin credenciales, imprime las filas
               calculadas desde el repositorio. Con credenciales, consulta
               Notion en modo lectura e imprime el plan (altas/actualizaciones/
               huérfanas) sin escribir nada.
+  --validar   Solo lee y parsea los documentos (odd/tasks y odd/tareas):
+              sin .env, sin Notion y sin git/gh. Sale con 1 si hay errores
+              de formato o las carpetas no son válidas. No detecta commits
+              inexistentes en "commits" (eso lo hace --dry-run). No se
+              combina con --dry-run.
   --ayuda     Muestra esta ayuda.
 
-Variables de entorno requeridas (salvo con --dry-run):
+Variables de entorno requeridas (salvo con --dry-run o --validar):
   NOTION_TOKEN
   NOTION_TABLERO_DB_ID
 
@@ -121,45 +127,79 @@ Variables de entorno opcionales:
   TABLERO_CARPETA_TAREAS   Carpeta de las Tareas (por defecto, odd/tareas).
 `;
 
-function principal(argumentos: string[]): void {
+const OPCIONES = ['--dry-run', '--validar', '--ayuda', '-h'];
+
+/** Lo que `ejecutarCLI` necesita: lo mismo que la raíz de composición, más
+ *  dónde imprimir la salida normal (`log`) y la de error (`logError`). */
+export interface EntornoCLI extends EntradaComposicion {
+    log: (linea: string) => void;
+    logError: (linea: string) => void;
+}
+
+/**
+ * Interpreta los argumentos y corre la ayuda, "--validar" o el sync.
+ * Devuelve el código de salida (no llama a `process.exit`). "--validar"
+ * solo recibe el lector de documentos y los ajustes: nunca toca el `.env`,
+ * git/gh ni Notion. "--validar" con "--dry-run" es un error (código 1).
+ */
+export async function ejecutarCLI(argumentos: string[], entorno: EntornoCLI): Promise<number> {
+    const { log, logError } = entorno;
     if (argumentos.includes('--ayuda') || argumentos.includes('-h')) {
-        console.log(AYUDA);
-        process.exit(0);
+        log(AYUDA);
+        return 0;
     }
 
     const dryRun = argumentos.includes('--dry-run');
-    const desconocidos = argumentos.filter((a) => !['--dry-run', '--ayuda', '-h'].includes(a));
+    const soloValidar = argumentos.includes('--validar');
+    const desconocidos = argumentos.filter((a) => !OPCIONES.includes(a));
     if (desconocidos.length > 0) {
-        console.error(`Opción desconocida: ${desconocidos.join(', ')}`);
-        console.error('Usá --ayuda para ver las opciones disponibles.');
-        process.exit(1);
+        logError(`Opción desconocida: ${desconocidos.join(', ')}`);
+        logError('Usá --ayuda para ver las opciones disponibles.');
+        return 1;
+    }
+    if (dryRun && soloValidar) {
+        logError(
+            '--validar y --dry-run no se pueden usar juntos: --validar solo lee y parsea los documentos; --dry-run además consulta git/gh (y Notion, con credenciales).',
+        );
+        logError('Usá --ayuda para ver las opciones disponibles.');
+        return 1;
     }
 
+    if (soloValidar) {
+        return validar({
+            raizRepo: entorno.raizRepo,
+            listarDocumentos: entorno.listarDocumentos,
+            ajustes: entorno.ajustes ?? AJUSTES_PROYECTO,
+            log,
+        }).codigo;
+    }
+
+    try {
+        // El resumen final (contadores o el aviso de "no calculado", más los
+        // errores de formato) ya se imprimió dentro de "sincronizar" vía el
+        // "log" inyectado — acá solo queda devolver su código.
+        const resumen = await sincronizar({ dryRun }, componerDependencias(entorno));
+        return resumen.codigo;
+    } catch (error: unknown) {
+        logError(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        return 1;
+    }
+}
+
+function principal(argumentos: string[]): void {
     const raizRepo = process.cwd();
     const ejecutar: EjecutarComando = (comando, args) =>
         execFileSync(comando, args, { encoding: 'utf8', cwd: raizRepo, maxBuffer: 1024 * 1024 * 32 });
     const fetchInyectado: FetchInyectado = (url, init) => fetch(url, init as RequestInit);
 
-    sincronizar(
-        { dryRun },
-        componerDependencias({
-            raizRepo,
-            ejecutar,
-            fetchInyectado,
-            listarDocumentos: (carpeta, opciones) => listarDocumentosODD(raizRepo, carpeta, opciones),
-            log: (linea) => console.log(linea),
-        }),
-    )
-        .then((resumen) => {
-            // El resumen final (contadores o el aviso de "no calculado", más
-            // los errores de formato) ya se imprimió dentro de "sincronizar"
-            // vía el "log" inyectado — acá solo queda salir con su código.
-            process.exit(resumen.codigo);
-        })
-        .catch((error: unknown) => {
-            console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-            process.exit(1);
-        });
+    void ejecutarCLI(argumentos, {
+        raizRepo,
+        ejecutar,
+        fetchInyectado,
+        listarDocumentos: (carpeta, opciones) => listarDocumentosODD(raizRepo, carpeta, opciones),
+        log: (linea) => console.log(linea),
+        logError: (linea) => console.error(linea),
+    }).then((codigo) => process.exit(codigo));
 }
 
 /**

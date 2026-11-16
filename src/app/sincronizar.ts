@@ -150,17 +150,26 @@ function imprimirResumenFinal(log: (linea: string) => void, resumen: ResumenSinc
         }
     }
     imprimirAvisos(log, resumen.avisos);
-    log(`Errores de formato: ${resumen.erroresDeFormato.length}`);
-    for (const error of resumen.erroresDeFormato) {
+    imprimirErroresDeFormato(log, resumen.erroresDeFormato);
+}
+
+/** Bloque "Errores de formato: N" (siempre, aun con 0) con los errores de
+ *  cada documento. Lo usan el resumen final y "--validar". */
+export function imprimirErroresDeFormato(
+    log: (linea: string) => void,
+    erroresDeFormato: Array<{ slug: string; errores: string[] }>,
+): void {
+    log(`Errores de formato: ${erroresDeFormato.length}`);
+    for (const error of erroresDeFormato) {
         log(`  ${error.slug}:`);
         for (const mensaje of error.errores) log(`    - ${mensaje}`);
     }
 }
 
-/** Bloque "Avisos: N" (nada si no hay avisos). Lo usan el resumen final y
- *  los retornos tempranos por error de entorno, para que el log diga lo mismo
- *  que el resumen devuelto. */
-function imprimirAvisos(log: (linea: string) => void, avisos: AvisoDocumento[] | undefined): void {
+/** Bloque "Avisos: N" (nada si no hay avisos). Lo usan el resumen final,
+ *  los retornos tempranos por error de entorno y "--validar", para que el
+ *  log diga lo mismo que el resumen devuelto. */
+export function imprimirAvisos(log: (linea: string) => void, avisos: AvisoDocumento[] | undefined): void {
     if (!avisos || avisos.length === 0) return;
     log(`Avisos: ${avisos.length}`);
     for (const aviso of avisos) {
