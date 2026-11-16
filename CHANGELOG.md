@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skill, the `/tablero:validar` and `/tablero:sync` commands, and a hook
   that validates documents in `odd/tasks/` and `odd/tareas/` after each
   edit.
+- Pi package for Gentle Shell (`pi` section in `package.json`, installable
+  with `pi install`): the same `tablero-odd-documents` skill, the
+  `/tablero-validar` and `/tablero-sync` prompt templates, and an extension
+  that runs `--validar` after each `write`/`edit` in `odd/tasks/` or
+  `odd/tareas/` and appends the format errors to the tool result.
 - `--validar` flag: only reads and parses the feature and task documents
   (no `.env`, Notion, `git` or `gh`), prints the format errors and exits
   with code 1 if there is any.

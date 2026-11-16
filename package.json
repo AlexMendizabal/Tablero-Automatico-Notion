@@ -12,7 +12,9 @@
     "README.en.md",
     "LICENSE",
     "CHANGELOG.md",
-    "skill"
+    "skill",
+    "pi",
+    "plugin/hooks/validar-odd.mjs"
   ],
   "license": "MIT",
   "repository": {
@@ -30,8 +32,20 @@
     "project-management",
     "odd",
     "automation",
-    "typescript"
+    "typescript",
+    "pi-package"
   ],
+  "pi": {
+    "skills": [
+      "./skill"
+    ],
+    "prompts": [
+      "./pi/prompts/*.md"
+    ],
+    "extensions": [
+      "./pi/extensions/validar-odd.ts"
+    ]
+  },
   "engines": {
     "node": ">=22"
   },

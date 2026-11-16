@@ -705,6 +705,44 @@ It brings:
   `npx`. With a published version without `--validar`, it warns and does
   not block.
 
+### Gentle Shell (Pi)
+
+The repository is also a [Pi](https://pi.dev) package (the `pi` section of
+`package.json`), so it installs into Gentle Shell, which runs on Pi. It
+brings the same as the Claude Code plugin:
+
+- **The `tablero-odd-documents` skill** (the same `skill/SKILL.md`).
+- **`/tablero-validar`** and **`/tablero-sync`**: prompt templates that do
+  the same as `/tablero:validar` and `/tablero:sync` (the real sync only
+  after the `--dry-run` is confirmed).
+- **An extension** that, after each `write` or `edit` of a `.md` in
+  `odd/tasks/` or `odd/tareas/`, runs `--validar` in the session directory
+  and appends the format errors to the tool result, so the agent sees and
+  fixes them. It resolves `tablero-notion` like the hook
+  (`TABLERO_NOTION_BIN`, the package installed in the project, or `npx`); if
+  it cannot run it or the version lacks `--validar`, it only warns.
+
+Gentle Shell keeps its configuration in `~/.gentle-shell/agent`.
+`pi install` writes to the configuration directory given by the
+`PI_CODING_AGENT_DIR` variable (default `~/.pi/agent`), so install it with:
+
+```bash
+PI_CODING_AGENT_DIR=~/.gentle-shell/agent pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+In PowerShell:
+
+```powershell
+$env:PI_CODING_AGENT_DIR = "$HOME\.gentle-shell\agent"; pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+Instead of the `git:` source you can use a path to a local clone
+(`pi install C:\path\to\clone`, loaded without copying) or, from the first
+npm release that ships the Pi package, `npm:tablero-automatico-notion`. With
+`--local` (`-l`) the declaration goes to the project's `.pi/settings.json`
+instead of the personal configuration. Then run `/reload` or restart Gentle
+Shell.
+
 ### Standalone skill
 
 The package ships an agent skill at `skill/SKILL.md` (also in this

@@ -9,9 +9,10 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "allowJs": true,
     "types": ["node", "jest"],
     "outDir": "dist",
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "pi/**/*.ts"]
 }

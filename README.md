@@ -720,6 +720,44 @@ Trae:
   formato. Usa el `tablero-notion` instalado en el proyecto o, si no hay,
   `npx`. Con una versión publicada sin `--validar`, avisa y no bloquea.
 
+### Gentle Shell (Pi)
+
+El repositorio es también un paquete de [Pi](https://pi.dev) (sección `pi`
+de `package.json`), así que se instala en Gentle Shell, que corre sobre Pi.
+Trae lo mismo que el plugin de Claude Code:
+
+- **La skill `tablero-odd-documents`** (la misma `skill/SKILL.md`).
+- **`/tablero-validar`** y **`/tablero-sync`**: plantillas de comandos que
+  hacen lo mismo que `/tablero:validar` y `/tablero:sync` (el sync real solo
+  tras confirmar el `--dry-run`).
+- **Una extensión** que, después de cada `write` o `edit` de un `.md` en
+  `odd/tasks/` u `odd/tareas/`, corre `--validar` en el directorio de la
+  sesión y agrega los errores de formato al resultado de la herramienta, para
+  que el agente los vea y los corrija. Resuelve `tablero-notion` igual que el
+  hook (`TABLERO_NOTION_BIN`, el paquete instalado en el proyecto o `npx`); si
+  no puede correrlo o la versión no tiene `--validar`, solo avisa.
+
+Gentle Shell guarda su configuración en `~/.gentle-shell/agent`. `pi install`
+escribe en el directorio de configuración que indique la variable
+`PI_CODING_AGENT_DIR` (por defecto `~/.pi/agent`), así que se instala con:
+
+```bash
+PI_CODING_AGENT_DIR=~/.gentle-shell/agent pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+En PowerShell:
+
+```powershell
+$env:PI_CODING_AGENT_DIR = "$HOME\.gentle-shell\agent"; pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+En lugar de la fuente `git:` sirven una ruta a un clon local
+(`pi install C:\ruta\al\clon`, se carga sin copiarse) o, desde la primera
+versión publicada en npm que traiga el paquete de Pi,
+`npm:tablero-automatico-notion`. Con `--local` (`-l`) la declaración va a
+`.pi/settings.json` del proyecto en vez de la configuración personal.
+Después, `/reload` o reiniciar Gentle Shell.
+
 ### Skill suelta
 
 El paquete incluye una skill para agentes en `skill/SKILL.md` (también en
