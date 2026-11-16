@@ -29,7 +29,7 @@ ramas: ["feat/plugin-claude-odd"]
 - [x] **T3 — Plugin de Claude Code (manifest, marketplace, skill, comandos, hook)**: S1-S2, S7-S8, worker, commit 68d3785.
 - [x] **T4 — Documentación README/CHANGELOG**: S9, inline (README.md) + worker (README.en.md, CHANGELOG; context backstop), commit de este cambio.
 
-- [/] **T5 — Paquete de Pi para Gentle Shell (manifest, comandos, extensión)**: S10, S9, worker (context backstop), commit pendiente.
+- [x] **T5 — Paquete de Pi para Gentle Shell (manifest, comandos, extensión)**: S10, S9, worker (context backstop), commit 02c80a5.
 
 ## Log
 
@@ -43,4 +43,5 @@ ramas: ["feat/plugin-claude-odd"]
 - L9 (verificación T1, gentle-ai-verify): S3, S4 y S5 met, sin bloqueantes; huella y cuerpo de docs `[ ]`/`[x]` idénticos a 270c125 (54 comparaciones, 0 diferencias). No verificado por `--dry-run` real (gh sin autenticar en el entorno). Avisos: (1) todas descartadas con un PR abierto → "Sin empezar" (la spec no lo cubre); (2) líneas `- [-]`/`- [/]`/`- [!]` mal formadas que antes se ignoraban ahora son error de formato (intencional por S3). Sus sondas quedan en tests/core/estados-tarea-regresion.test.ts.
 - L10 (usuario): "realiza commit y prs" → elección "PRs encadenados a main"; bloqueado: la cuenta JimReflos tiene solo lectura en el upstream y el token no puede crear forks (HTTP 403). Luego: "podemos ya instalralo y probarlo con mis proyectos" → plugin instalado desde el marketplace local (scope user), TABLERO_NOTION_BIN apunta al build local; commit 282ecdc hace que los comandos lo usen.
 - L11 (usuario): "lo puedo agregar en gentle-shell" / "dale implementalo" → T5.
+- L12 (T5): 536/536 tests, typecheck y build OK. Instalado en Gentle Shell con `PI_CODING_AGENT_DIR=~/.gentle-shell/agent pi install <repo>` (backup: settings.json.bak-tablero). La extensión carga con el jiti de Pi y, ante un doc mal formado, agrega la salida de --validar al resultado del tool. No probado dentro de una sesión real de Gentle Shell (requiere reinicio).
 - L6 (rutas): T1, T2 y T3 son unidades independientes con superficies disjuntas → escritores en paralelo. T4 inline al final. Riesgo: T1 cambia el contrato de formato que consumen los documentos y el tablero (ítem 3) → verificador independiente.
