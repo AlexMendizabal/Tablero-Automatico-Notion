@@ -1,7 +1,7 @@
 /**
  * Parser del documento ODD (frontmatter, título y sección de tareas).
  */
-import type { DocumentoODD, ResultadoParseoDocumento, TareaDocumento } from './types';
+import type { DocumentoODD, EstadoTarea, ResultadoParseoDocumento, TareaDocumento } from './types';
 
 // ---------------------------------------------------------------------------
 // parsearDocumento
@@ -85,7 +85,18 @@ const REGEX_TITULO = /^#\s+(.+?)\s*$/;
 const REGEX_SECCION_TAREAS = /^##\s+(Tareas|Tasks)\s*$/;
 const NOMBRE_SECCION_TAREAS = "'## Tareas' (o '## Tasks')";
 const REGEX_SECCION_NIVEL2 = /^##\s+/;
-const REGEX_INICIO_TAREA = /^- \[([ xX])\]/;
+/** Marcadores de tarea: `[ ]` pendiente, `[/]` en curso, `[!]` bloqueada,
+ *  `[-]` descartada y `[x]`/`[X]` hecha. Cualquier otro contenido entre
+ *  corchetes (ej. `[?]`) no es una tarea y se ignora. */
+const REGEX_INICIO_TAREA = /^- \[([ xX/!-])\]/;
+const ESTADO_POR_MARCADOR: Readonly<Record<string, EstadoTarea>> = {
+    ' ': 'pendiente',
+    '/': 'en_curso',
+    '!': 'bloqueada',
+    '-': 'descartada',
+    x: 'hecha',
+    X: 'hecha',
+};
 // La descripción tras "**" es OPCIONAL: la regla normativa del contrato
 // ("Formato del documento ODD") solo exige "un ID en negrita al principio";
 // el ": descripción" es apenas el estilo del ejemplo. Documentos reales del
@@ -93,7 +104,7 @@ const REGEX_INICIO_TAREA = /^- \[([ xX])\]/;
 // mismo archivo — algunas tareas con "**ID — Nombre**: descripción." y otras
 // con "**ID — Nombre**." a secas. El grupo 3 captura todo lo que sigue al
 // "**" de cierre, con o sin los dos puntos.
-const REGEX_TAREA_COMPLETA = /^- \[([ xX])\]\s+\*\*(.+?)\*\*(.*)$/;
+const REGEX_TAREA_COMPLETA = /^- \[([ xX/!-])\]\s+\*\*(.+?)\*\*(.*)$/;
 const REGEX_ID_TAREA = /^[A-Z]+\d+$/;
 const SEPARADOR_RAYA = ' — '; // U+2014
 const SEPARADOR_GUION = ' - ';
@@ -333,7 +344,8 @@ export function parsearDocumentoConFormato(
                 continue;
             }
             const [, checkbox, negrita, restoBruto] = completa;
-            const hecha = checkbox === 'x' || checkbox === 'X';
+            const estado = ESTADO_POR_MARCADOR[checkbox];
+            const hecha = estado === 'hecha';
 
             // El resto tras el "**" de cierre puede venir como ": descripción"
             // (se le saca el ":" inicial) o vacío/solo puntuación de cierre
@@ -356,6 +368,7 @@ export function parsearDocumentoConFormato(
                     descripcion,
                     hecha,
                     esQA: idCrudo.startsWith('QA'),
+                    estado,
                 });
             } else if (negrita.includes(SEPARADOR_GUION)) {
                 errores.push(

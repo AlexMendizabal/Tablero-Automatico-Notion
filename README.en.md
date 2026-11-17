@@ -139,6 +139,82 @@ only set when non-empty). The action passes the workflow's `github.token` to
 > in its own job (as above), or after any steps that need another Node
 > version.
 
+### Several projects: one board per repository
+
+Each Notion board belongs to **a single** repository (or a single package of
+a monorepo). Rows are identified by their Slug, and a page with no document
+in the repository running the sync is reported as an orphan: if two
+repositories write to the same database, their slugs can overwrite each
+other and each one sees the other's rows as orphans. So: one Notion database
+per repository or package.
+
+**Microservices (one repository per service).** Copy the workflow above into
+each repository, each with its own Notion database and its own secrets.
+Nothing else is needed.
+
+**Monorepo with a single documents folder at the root.** Same as a regular
+repository: the workflow above, unchanged.
+
+**Monorepo with documents per package** (`apps/web/odd/tasks`,
+`services/payments/odd/tasks`, ...). One run per package with a `matrix`,
+each with its own folder and database:
+
+```yaml
+name: Notion board
+
+on:
+  push:
+    branches: ['**', '!dependabot/**']
+    paths: ['**/odd/tasks/**', '**/odd/tareas/**']
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one failing package does not stop the others
+      matrix:
+        include:
+          - folder: apps/web
+            db_secret: NOTION_DB_WEB
+          - folder: services/payments
+            db_secret: NOTION_DB_PAYMENTS
+    # Two runs never write to the same database at once.
+    concurrency: board-${{ matrix.db_secret }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
+        with:
+          notion-token: ${{ secrets.NOTION_TOKEN }}
+          notion-database-id: ${{ secrets[matrix.db_secret] }}
+          features-folder: ${{ matrix.folder }}/odd/tasks
+          tasks-folder: ${{ matrix.folder }}/odd/tareas # always the package's, never the root's
+```
+
+Monorepo notes:
+
+- Each package needs its own Notion database (and a secret with its ID). One
+  token can serve them all if the integration is shared with every database.
+- Always set `tasks-folder` per package: without it the root `odd/tareas` is
+  read, and every package would share the same tasks. If the package has no
+  tasks, the folder may be missing.
+- Slugs only need to be unique within each package.
+- Branches and pull requests belong to the whole repository: each document's
+  `ramas` pattern decides which branches count for that feature, so use
+  per-package prefixes (for example `feat/payments-*`).
+- To validate in pull requests, use the same `matrix` with `dry-run: true`
+  and no secrets.
+
 ### Option 2: npm / npx
 
 The package is `tablero-automatico-notion`; its command is `tablero-notion`.
@@ -284,6 +360,12 @@ Notion read-only (schema, existing pages) and shows the full plan — how many
 pages it would create, how many it would update, how many would get their
 body rewritten, and which would be orphaned — without writing anything yet.
 
+**`tablero-notion --validar`**: only reads and parses the feature and task
+documents, without reading `.env`, without Notion and without `git` or `gh`.
+It prints the format errors and exits with code 1 if there is any (or if the
+folder is missing). It does not detect nonexistent commits in `commits`:
+that is left to `--dry-run`. It cannot be combined with `--dry-run`.
+
 **`npm run sync`**: runs the real sync against Notion. It exits with a
 non-zero code if any document had a format error or any slug is duplicated
 in Notion, even if the rest of the features synced without problems.
@@ -385,6 +467,22 @@ Rules:
   when deriving the status. The ID goes in bold at the start of the checkbox,
   separated from the name by an em dash (`—`, not a regular hyphen); the
   description after the colon is optional.
+- **Each task's status, in the checkbox**: five markers, the same states
+  Gentle uses (pending, in_progress, blocked, dropped, done):
+
+  | Marker | Status | Effect |
+  |---|---|---|
+  | `- [ ]` | pending | Counts towards the progress total. |
+  | `- [/]` | in progress | Counts towards the total; the feature is no longer "Not started". |
+  | `- [!]` | blocked | Counts towards the total; the feature becomes **Blocked**. |
+  | `- [-]` | dropped | Counts towards neither progress nor status. |
+  | `- [x]` or `- [X]` | done | Counts as done. |
+
+  In the Notion page body only done tasks are checked; in progress, blocked
+  and dropped tasks get a prefix ("(in progress)", "(blocked)",
+  "(dropped)"; on a Spanish board "(en curso)", "(bloqueada)",
+  "(descartada)"). Any other content between the brackets (for example
+  `- [?]`) is not a task.
 - **Code blocks are ignored**: a ` ```markdown ` block containing an example
   frontmatter or task section does not count as the document's real
   frontmatter or section.
@@ -472,14 +570,16 @@ Behavior:
 
 ## How the status is derived
 
-The status property ("Status" / "Estado") takes one of four values, written
-in the board's language, in this order of precedence:
+The status property ("Status" / "Estado") takes one of five values, written
+in the board's language, in this order of precedence. Dropped tasks
+(`- [-]`) do not count for any rule:
 
 | English (`en`) | Spanish (`es`) | When |
 |---|---|---|
-| **Done** | **Terminada** | There is at least one task, all of them are checked as done, and there is no open PR on the feature's branches. |
+| **Done** | **Terminada** | There is at least one task, every non-dropped task is done (or all of them are dropped: progress 0/0), and there is no open PR on the feature's branches. |
+| **Blocked** | **Bloqueada** | Some non-dropped task is blocked (`- [!]`). |
 | **QA pending** | **QA pendiente** | There are unfinished tasks, and all of them are QA tasks (`QA` prefix). |
-| **Not started** | **Sin empezar** | No task is checked as done. |
+| **Not started** | **Sin empezar** | No task is done or in progress (`- [/]`). |
 | **In progress** | **En curso** | Any other combination (for example, with tasks done and non-QA tasks pending, or with everything done but a PR still open). |
 
 The "Updated" ("Actualizado") date — and from it "Days inactive" ("Días sin
@@ -577,11 +677,79 @@ renames and re-emails those made as `Ana Pérez <ana@personal.com>`).
 
 ## Agent skill
 
+### Claude Code plugin
+
+This repository is also a Claude Code marketplace with the `tablero`
+plugin:
+
+```text
+/plugin marketplace add AlexMendizabal/Tablero-Automatico-Notion
+/plugin install tablero@tablero-automatico-notion
+```
+
+It brings:
+
+- **The `tablero-odd-documents` skill**: the single ODD document format that
+  satisfies both Gentle's contract (`## Specs`, `## Tasks` with `S#`, path
+  and commit, `## Log`) and this sync's (`ramas` frontmatter, title,
+  `**T1 — Name**` checkboxes). A Gentle document without frontmatter or
+  checkboxes makes the sync fail; with the skill, the agent writes the
+  hybrid format from the start.
+- **`/tablero:validar`**: runs `tablero-notion --validar` and explains the
+  errors.
+- **`/tablero:sync`**: runs `--dry-run`, shows the plan and only syncs for
+  real if confirmed.
+- **A hook** that, after each edit of a `.md` in `odd/tasks/` or
+  `odd/tareas/`, runs `--validar` and shows the agent the format errors. It
+  uses the `tablero-notion` installed in the project or, if there is none,
+  `npx`. With a published version without `--validar`, it warns and does
+  not block.
+
+### Gentle Shell (Pi)
+
+The repository is also a [Pi](https://pi.dev) package (the `pi` section of
+`package.json`), so it installs into Gentle Shell, which runs on Pi. It
+brings the same as the Claude Code plugin:
+
+- **The `tablero-odd-documents` skill** (the same `skill/SKILL.md`).
+- **`/tablero-validar`** and **`/tablero-sync`**: prompt templates that do
+  the same as `/tablero:validar` and `/tablero:sync` (the real sync only
+  after the `--dry-run` is confirmed).
+- **An extension** that, after each `write` or `edit` of a `.md` in
+  `odd/tasks/` or `odd/tareas/`, runs `--validar` in the session directory
+  and appends the format errors to the tool result, so the agent sees and
+  fixes them. It resolves `tablero-notion` like the hook
+  (`TABLERO_NOTION_BIN`, the package installed in the project, or `npx`); if
+  it cannot run it or the version lacks `--validar`, it only warns.
+
+Gentle Shell keeps its configuration in `~/.gentle-shell/agent`.
+`pi install` writes to the configuration directory given by the
+`PI_CODING_AGENT_DIR` variable (default `~/.pi/agent`), so install it with:
+
+```bash
+PI_CODING_AGENT_DIR=~/.gentle-shell/agent pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+In PowerShell:
+
+```powershell
+$env:PI_CODING_AGENT_DIR = "$HOME\.gentle-shell\agent"; pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+Instead of the `git:` source you can use a path to a local clone
+(`pi install C:\path\to\clone`, loaded without copying) or, from the first
+npm release that ships the Pi package, `npm:tablero-automatico-notion`. With
+`--local` (`-l`) the declaration goes to the project's `.pi/settings.json`
+instead of the personal configuration. Then run `/reload` or restart Gentle
+Shell.
+
+### Standalone skill
+
 The package ships an agent skill at `skill/SKILL.md` (also in this
 repository) that teaches an AI coding agent the document contract: where
 feature and task documents live, the frontmatter rules, the task line
 format, how status and contributors are derived, and how to validate with
-`--dry-run`. Copy the `skill/` folder into your agent's skills directory
+`--validar` and `--dry-run`. Copy the `skill/` folder into your agent's skills directory
 (for example `.claude/skills/tablero-odd-documents/` or
 `~/.claude/skills/tablero-odd-documents/`), or point the agent at the file
 from `node_modules/tablero-automatico-notion/skill/SKILL.md`.

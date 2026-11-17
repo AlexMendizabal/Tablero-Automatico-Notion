@@ -800,7 +800,11 @@ describe('sincronizar — idioma del tablero', () => {
 
     function correr(
         notionFalso: ReturnType<typeof crearNotionFalsoCompleto>,
-        extra: { log?: (linea: string) => void; idioma?: 'es' | 'en' } = {},
+        extra: {
+            log?: (linea: string) => void;
+            idioma?: 'es' | 'en';
+            listarDocumentos?: () => Array<{ slug: string; contenido: string }>;
+        } = {},
     ) {
         return sincronizar(
             { dryRun: false },
@@ -835,6 +839,27 @@ describe('sincronizar — idioma del tablero', () => {
         expect(segunda.creadas).toBe(0);
         expect(segunda.actualizadas).toBe(1);
         expect(segunda.cuerposReescritos).toBe(0);
+    });
+
+    test('BOARD_LANGUAGE=en: el cuerpo (alta y reescritura) usa los prefijos de estado en inglés', async () => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION_EN);
+        const conTareas = (lineas: string[]) => () => [
+            { slug: 'feature-x', contenido: docBase({ seccionTareas: ['## Tasks', '', ...lineas].join('\n') }) },
+        ];
+        const cuerpo = () => JSON.stringify([...notionFalso.paginas.values()][0].hijos);
+
+        await conBoardLanguage('en', () =>
+            correr(notionFalso, { listarDocumentos: conTareas(['- [!] **T1 — Uno**', '- [x] **T2 — Dos**']) }),
+        );
+        expect(cuerpo()).toContain('(blocked) ');
+        expect(cuerpo()).not.toContain('(bloqueada)');
+
+        const segunda = await conBoardLanguage('en', () =>
+            correr(notionFalso, { listarDocumentos: conTareas(['- [-] **T1 — Uno**', '- [x] **T2 — Dos**']) }),
+        );
+        expect(segunda.cuerposReescritos).toBe(1);
+        expect(cuerpo()).toContain('(dropped) ');
+        expect(cuerpo()).not.toContain('(descartada)');
     });
 
     test('BOARD_LANGUAGE=en contra una base con columnas en español: esquema inválido, código 1, nada escrito', async () => {

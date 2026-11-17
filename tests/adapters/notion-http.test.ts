@@ -629,3 +629,67 @@ describe('crearClienteNotion.crearPagina — recorte de texto y alta en lotes (f
         expect(notionFalso.paginas.get(pageId)!.hijos).toHaveLength(250);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Estados de tarea en el cuerpo (S3): solo "hecha" va tildada; en curso,
+// bloqueada y descartada llevan un prefijo en el idioma del tablero.
+// ---------------------------------------------------------------------------
+
+describe('crearClienteNotion — estados de tarea en el cuerpo (S3)', () => {
+    type BloqueToDo = { to_do: { rich_text: Array<{ text: { content: string } }>; checked: boolean } };
+    const tareasConEstados = [
+        tarea({ id: 'T1', nombre: 'A', descripcion: 'a', hecha: false, estado: 'pendiente' }),
+        tarea({ id: 'T2', nombre: 'B', descripcion: 'b', hecha: false, estado: 'en_curso' }),
+        tarea({ id: 'T3', nombre: 'C', descripcion: 'c', hecha: false, estado: 'bloqueada' }),
+        tarea({ id: 'T4', nombre: 'D', descripcion: 'd', hecha: false, estado: 'descartada' }),
+        tarea({ id: 'T5', nombre: 'E', descripcion: 'e', hecha: true, estado: 'hecha' }),
+    ];
+    const resumen = (hijos: Array<{ bloque: Record<string, unknown> }>) =>
+        hijos.map((h) => {
+            const b = h.bloque as BloqueToDo;
+            return [b.to_do.rich_text[0].text.content, b.to_do.checked];
+        });
+
+    test('crearPagina en español: prefijos "(en curso) ", "(bloqueada) ", "(descartada) "', async () => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const cliente = crearClienteNotion(notionFalso.fetchFalso, 'tok', async () => {});
+        const ds = await cliente.obtenerDataSourceId(notionFalso.databaseId);
+        const pageId = await cliente.crearPagina(ds, { Slug: { rich_text: [] } }, tareasConEstados, 'es');
+        expect(resumen(notionFalso.paginas.get(pageId)!.hijos)).toEqual([
+            ['T1 — A: a', false],
+            ['(en curso) T2 — B: b', false],
+            ['(bloqueada) T3 — C: c', false],
+            ['(descartada) T4 — D: d', false],
+            ['T5 — E: e', true],
+        ]);
+    });
+
+    test('reescribirCuerpo en inglés: prefijos "(in progress) ", "(blocked) ", "(dropped) "', async () => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const cliente = crearClienteNotion(notionFalso.fetchFalso, 'tok', async () => {});
+        const ds = await cliente.obtenerDataSourceId(notionFalso.databaseId);
+        const pageId = await cliente.crearPagina(ds, { Slug: { rich_text: [] } }, []);
+        await cliente.reescribirCuerpo(pageId, tareasConEstados, 'en');
+        expect(resumen(notionFalso.paginas.get(pageId)!.hijos)).toEqual([
+            ['T1 — A: a', false],
+            ['(in progress) T2 — B: b', false],
+            ['(blocked) T3 — C: c', false],
+            ['(dropped) T4 — D: d', false],
+            ['T5 — E: e', true],
+        ]);
+    });
+
+    test('sin idioma, [ ]/[x] (y tareas sin estado) se escriben como siempre', async () => {
+        const notionFalso = crearNotionFalsoCompleto(ESQUEMA_CORRECTO_NOTION);
+        const cliente = crearClienteNotion(notionFalso.fetchFalso, 'tok', async () => {});
+        const ds = await cliente.obtenerDataSourceId(notionFalso.databaseId);
+        const pageId = await cliente.crearPagina(ds, { Slug: { rich_text: [] } }, [
+            tarea({ id: 'T1', nombre: 'A', descripcion: 'a', hecha: true }),
+            tarea({ id: 'T2', nombre: 'B', descripcion: 'b', hecha: false }),
+        ]);
+        expect(resumen(notionFalso.paginas.get(pageId)!.hijos)).toEqual([
+            ['T1 — A: a', true],
+            ['T2 — B: b', false],
+        ]);
+    });
+});

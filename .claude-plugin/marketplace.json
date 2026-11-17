@@ -1,0 +1,13 @@
+{
+  "name": "tablero-automatico-notion",
+  "owner": {
+    "name": "AlexMendizabal"
+  },
+  "plugins": [
+    {
+      "name": "tablero",
+      "source": "./plugin",
+      "description": "Write Gentle-compatible ODD documents and sync them to a Notion board: format skill, /tablero:validar and /tablero:sync commands, and a validation hook for odd/tasks and odd/tareas."
+    }
+  ]
+}

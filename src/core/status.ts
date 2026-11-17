@@ -2,7 +2,7 @@
  * Estado y actividad de una feature: patrones de rama, estado derivado,
  * fecha de última actividad y días sin actividad.
  */
-import type { Estado, ParametrosActualizado, TareaDocumento } from './types';
+import type { Estado, EstadoTarea, ParametrosActualizado, TareaDocumento } from './types';
 
 // ---------------------------------------------------------------------------
 // coincideRama
@@ -29,14 +29,29 @@ export function coincideRama(patron: string, rama: string): boolean {
 // derivarEstado
 // ---------------------------------------------------------------------------
 
-export function derivarEstado(tareas: TareaDocumento[], cantidadPrsAbiertos: number): Estado {
-    const total = tareas.length;
-    const hechas = tareas.filter((t) => t.hecha).length;
-    const pendientes = tareas.filter((t) => !t.hecha);
+/** Estado del marcador de una tarea; sin `estado` (tareas armadas a mano),
+ *  se deduce de `hecha`. */
+export function estadoDeTarea(tarea: TareaDocumento): EstadoTarea {
+    return tarea.estado ?? (tarea.hecha ? 'hecha' : 'pendiente');
+}
 
-    if (total > 0 && hechas === total && cantidadPrsAbiertos === 0) return 'Terminada';
+/** Tareas que cuentan (las descartadas quedan fuera del total y del estado). */
+export function tareasActivas(tareas: TareaDocumento[]): TareaDocumento[] {
+    return tareas.filter((t) => estadoDeTarea(t) !== 'descartada');
+}
+
+/** Precedencia: Terminada (todas las no descartadas hechas, aunque no quede
+ *  ninguna, y 0 PRs abiertos) > Bloqueada (alguna no descartada `[!]`) > QA
+ *  pendiente > Sin empezar (ninguna hecha ni en curso) > En curso. */
+export function derivarEstado(tareas: TareaDocumento[], cantidadPrsAbiertos: number): Estado {
+    const activas = tareasActivas(tareas);
+    const hechas = activas.filter((t) => t.hecha).length;
+    const pendientes = activas.filter((t) => !t.hecha);
+
+    if (tareas.length > 0 && hechas === activas.length && cantidadPrsAbiertos === 0) return 'Terminada';
+    if (activas.some((t) => estadoDeTarea(t) === 'bloqueada')) return 'Bloqueada';
     if (pendientes.length > 0 && pendientes.every((t) => t.esQA)) return 'QA pendiente';
-    if (hechas === 0) return 'Sin empezar';
+    if (hechas === 0 && !activas.some((t) => estadoDeTarea(t) === 'en_curso')) return 'Sin empezar';
     return 'En curso';
 }
 

@@ -141,6 +141,83 @@ a `gh` el `github.token` del workflow, así que el job necesita
 > job. Conviene correrla en su propio job (como en el ejemplo), o después de
 > los pasos que necesiten otra versión de Node.
 
+### Varios proyectos: un tablero por repositorio
+
+Cada tablero de Notion pertenece a **un solo** repositorio (o a un solo
+paquete de un monorepo). Las filas se identifican por el Slug, y una página
+sin documento en el repositorio que corre el sync se reporta como huérfana:
+si dos repositorios escriben en la misma base, sus slugs pueden pisarse y
+cada uno ve las filas del otro como huérfanas. Por eso, una base de Notion
+por repositorio o paquete.
+
+**Microservicios (un repositorio por servicio).** Copiar el workflow de
+arriba en cada repositorio, cada uno con su propia base de Notion y sus
+propios secrets. No hace falta nada más.
+
+**Monorepo con una sola carpeta de documentos en la raíz.** Igual que un
+repositorio común: el workflow de arriba, sin cambios.
+
+**Monorepo con documentos por paquete** (`apps/web/odd/tasks`,
+`services/pagos/odd/tasks`, ...). Una corrida por paquete con una `matrix`,
+cada una con su carpeta y su base:
+
+```yaml
+name: Tablero de Notion
+
+on:
+  push:
+    branches: ['**', '!dependabot/**']
+    paths: ['**/odd/tasks/**', '**/odd/tareas/**']
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # un paquete que falla no frena a los demás
+      matrix:
+        include:
+          - carpeta: apps/web
+            secret_db: NOTION_DB_WEB
+          - carpeta: services/pagos
+            secret_db: NOTION_DB_PAGOS
+    # Dos corridas nunca escriben a la vez sobre la misma base.
+    concurrency: tablero-${{ matrix.secret_db }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: AlexMendizabal/Tablero-Automatico-Notion@v2
+        with:
+          notion-token: ${{ secrets.NOTION_TOKEN }}
+          notion-database-id: ${{ secrets[matrix.secret_db] }}
+          features-folder: ${{ matrix.carpeta }}/odd/tasks
+          tasks-folder: ${{ matrix.carpeta }}/odd/tareas # siempre la del paquete, nunca la de la raíz
+```
+
+Notas para el monorepo:
+
+- Cada paquete necesita su propia base de Notion (y su secret con el ID).
+  Un mismo token puede servir para todas si la integración está compartida
+  con cada base.
+- Definir siempre `tasks-folder` por paquete: sin él se lee `odd/tareas` de
+  la raíz, y todos los paquetes compartirían las mismas tareas. Si el
+  paquete no tiene tareas, la carpeta puede no existir.
+- Los slugs solo tienen que ser únicos dentro de cada paquete.
+- Ramas y pull requests son del repositorio entero: el patrón de `ramas` de
+  cada documento decide qué ramas cuentan para esa feature, así que conviene
+  usar prefijos por paquete (por ejemplo `feat/pagos-*`).
+- Para validar en los pull requests, la misma `matrix` con `dry-run: true` y
+  sin secrets.
+
 ### Opción 2: npm / npx
 
 El paquete es `tablero-automatico-notion`; su comando es `tablero-notion`.
@@ -294,6 +371,12 @@ completo — cuántas páginas crearía, cuántas actualizaría, a cuántas les
 reescribiría el cuerpo, y cuáles quedarían huérfanas — sin escribir nada
 todavía.
 
+**`tablero-notion --validar`**: solo lee y parsea los documentos de
+Features y de Tareas, sin leer el `.env`, sin Notion y sin `git` ni `gh`.
+Imprime los errores de formato y termina con código 1 si hay alguno (o si
+falta la carpeta). No detecta commits inexistentes en `commits`: eso queda
+para `--dry-run`. No se combina con `--dry-run`.
+
 **`npm run sync`**: ejecuta la sincronización real contra Notion. Termina con
 código de salida distinto de cero si hubo algún error de formato en un
 documento o algún slug duplicado en Notion, aunque el resto de las features
@@ -396,6 +479,22 @@ Reglas:
   prueba manual a los efectos de derivar el estado. El ID va en negrita al
   principio del checkbox, separado del nombre por una raya (`—`, no un
   guion común); la descripción después de los dos puntos es opcional.
+- **Estado de cada tarea, en el checkbox**: cinco marcadores, los mismos
+  estados que usa Gentle (pending, in_progress, blocked, dropped, done):
+
+  | Marcador | Estado | Efecto |
+  |---|---|---|
+  | `- [ ]` | pendiente | Cuenta en el total del progreso. |
+  | `- [/]` | en curso | Cuenta en el total; la feature deja de estar "Sin empezar". |
+  | `- [!]` | bloqueada | Cuenta en el total; la feature queda **Bloqueada**. |
+  | `- [-]` | descartada | No cuenta en el progreso ni en el estado. |
+  | `- [x]` o `- [X]` | hecha | Cuenta como hecha. |
+
+  En el cuerpo de la página de Notion solo la hecha va tildada; en curso,
+  bloqueada y descartada llevan un prefijo ("(en curso)", "(bloqueada)",
+  "(descartada)"; en inglés "(in progress)", "(blocked)", "(dropped)").
+  Cualquier otro contenido entre corchetes (por ejemplo `- [?]`) no es una
+  tarea.
 - **Los bloques de código se ignoran**: un ` ```markdown ` con un ejemplo de
   frontmatter o de sección de tareas adentro no cuenta como el frontmatter
   ni la sección reales del documento.
@@ -484,14 +583,16 @@ Comportamiento:
 
 ## Cómo se deriva el estado
 
-La propiedad de estado ("Estado" / "Status") toma uno de cuatro valores,
-escrito en el idioma del tablero, en este orden de precedencia:
+La propiedad de estado ("Estado" / "Status") toma uno de cinco valores,
+escrito en el idioma del tablero, en este orden de precedencia. Las tareas
+descartadas (`- [-]`) no cuentan para ninguna regla:
 
 | Español (`es`) | Inglés (`en`) | Cuándo |
 |---|---|---|
-| **Terminada** | **Done** | Hay al menos una tarea, todas están marcadas como hechas, y no queda ningún PR abierto sobre las ramas de la feature. |
+| **Terminada** | **Done** | Hay al menos una tarea, todas las no descartadas están hechas (o todas están descartadas: progreso 0/0), y no queda ningún PR abierto sobre las ramas de la feature. |
+| **Bloqueada** | **Blocked** | Alguna tarea no descartada está bloqueada (`- [!]`). |
 | **QA pendiente** | **QA pending** | Quedan tareas sin hacer, y todas las que quedan sin hacer son de QA (prefijo `QA`). |
-| **Sin empezar** | **Not started** | Ninguna tarea está marcada como hecha. |
+| **Sin empezar** | **Not started** | Ninguna tarea está hecha ni en curso (`- [/]`). |
 | **En curso** | **In progress** | Cualquier otra combinación (por ejemplo, con tareas hechas y no-QA pendientes, o con todo hecho pero un PR todavía abierto). |
 
 La fecha de "Actualizado" (y de ahí "Días sin actividad") toma la más
@@ -592,11 +693,78 @@ ana-gh <ana@ejemplo.com> Ana Pérez <ana@personal.com>
 
 ## Skill para agentes
 
+### Plugin de Claude Code
+
+Este repositorio es también un marketplace de Claude Code con el plugin
+`tablero`:
+
+```text
+/plugin marketplace add AlexMendizabal/Tablero-Automatico-Notion
+/plugin install tablero@tablero-automatico-notion
+```
+
+Trae:
+
+- **La skill `tablero-odd-documents`**: el formato único de documento ODD que
+  cumple a la vez el contrato de Gentle (`## Specs`, `## Tasks` con `S#`,
+  ruta y commit, `## Log`) y el de este sync (frontmatter `ramas`, título,
+  checkboxes `**T1 — Nombre**`). Un documento de Gentle sin frontmatter ni
+  checkboxes hace fallar el sync; con la skill, el agente escribe el formato
+  híbrido desde el principio.
+- **`/tablero:validar`**: corre `tablero-notion --validar` y explica los
+  errores.
+- **`/tablero:sync`**: corre `--dry-run`, muestra el plan y solo sincroniza
+  de verdad si se confirma.
+- **Un hook** que, después de cada edición de un `.md` en `odd/tasks/` u
+  `odd/tareas/`, corre `--validar` y le muestra al agente los errores de
+  formato. Usa el `tablero-notion` instalado en el proyecto o, si no hay,
+  `npx`. Con una versión publicada sin `--validar`, avisa y no bloquea.
+
+### Gentle Shell (Pi)
+
+El repositorio es también un paquete de [Pi](https://pi.dev) (sección `pi`
+de `package.json`), así que se instala en Gentle Shell, que corre sobre Pi.
+Trae lo mismo que el plugin de Claude Code:
+
+- **La skill `tablero-odd-documents`** (la misma `skill/SKILL.md`).
+- **`/tablero-validar`** y **`/tablero-sync`**: plantillas de comandos que
+  hacen lo mismo que `/tablero:validar` y `/tablero:sync` (el sync real solo
+  tras confirmar el `--dry-run`).
+- **Una extensión** que, después de cada `write` o `edit` de un `.md` en
+  `odd/tasks/` u `odd/tareas/`, corre `--validar` en el directorio de la
+  sesión y agrega los errores de formato al resultado de la herramienta, para
+  que el agente los vea y los corrija. Resuelve `tablero-notion` igual que el
+  hook (`TABLERO_NOTION_BIN`, el paquete instalado en el proyecto o `npx`); si
+  no puede correrlo o la versión no tiene `--validar`, solo avisa.
+
+Gentle Shell guarda su configuración en `~/.gentle-shell/agent`. `pi install`
+escribe en el directorio de configuración que indique la variable
+`PI_CODING_AGENT_DIR` (por defecto `~/.pi/agent`), así que se instala con:
+
+```bash
+PI_CODING_AGENT_DIR=~/.gentle-shell/agent pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+En PowerShell:
+
+```powershell
+$env:PI_CODING_AGENT_DIR = "$HOME\.gentle-shell\agent"; pi install git:github.com/AlexMendizabal/Tablero-Automatico-Notion
+```
+
+En lugar de la fuente `git:` sirven una ruta a un clon local
+(`pi install C:\ruta\al\clon`, se carga sin copiarse) o, desde la primera
+versión publicada en npm que traiga el paquete de Pi,
+`npm:tablero-automatico-notion`. Con `--local` (`-l`) la declaración va a
+`.pi/settings.json` del proyecto en vez de la configuración personal.
+Después, `/reload` o reiniciar Gentle Shell.
+
+### Skill suelta
+
 El paquete incluye una skill para agentes en `skill/SKILL.md` (también en
 este repositorio) que le enseña a un agente de IA el contrato de los
 documentos: dónde viven los documentos de features y de tareas, las reglas
 del frontmatter, el formato de cada línea de tarea, cómo se derivan el
-estado y los contribuyentes, y cómo validar con `--dry-run`. Copiar la
+estado y los contribuyentes, y cómo validar con `--validar` y `--dry-run`. Copiar la
 carpeta `skill/` en el directorio de skills del agente (por ejemplo
 `.claude/skills/tablero-odd-documents/` o
 `~/.claude/skills/tablero-odd-documents/`), o indicarle al agente el archivo

@@ -1,0 +1,49 @@
+---
+ramas: ["feat/plugin-claude-odd"]
+---
+
+# Plugin de Claude Code y formato ODD compatible con Gentle
+
+**Objetivo:** entregar el tablero como extensión (plugin) de Claude Code y definir un formato único de documento ODD que cumpla el contrato de Gentle y el del sync, con estados de tarea de Gentle.
+**Rama:** feat/plugin-claude-odd (desde main 7be259c). **Estrategia de entrega:** commits por unidad de trabajo. **Tests:** `npm test` (jest) y `npm run typecheck`.
+
+## Specs
+
+- **S1 — Extensión para Claude.** Pedido: "tiene que ser un extencion para claude que usamos ahora odd que es una carpeta de tareas". Un plugin de Claude Code en este repositorio, instalable desde un marketplace del propio repo ("Marketplace en este repo": `.claude-plugin/marketplace.json`, `/plugin marketplace add AlexMendizabal/Tablero-Automatico-Notion`).
+- **S2 — Formato híbrido único.** Pedido: "revisa gentle para que no se pisen y tenga todo bien definido". Elección: "Formato híbrido único (recomendado)": un solo documento en `odd/tasks/<slug>.md` que cumple los dos contratos: frontmatter `ramas` + título `# ` + cabecera de Gentle + `## Specs` + `## Tasks` con checkboxes `**T1 — Nombre**` (y a continuación `S#`, ruta y commit) + `## Log`. El skill del plugin lo enseña ("Skill del formato ODD").
+- **S3 — Marcadores de estado.** Elección: "[ ] [/] [!] [-] [x] (recomendado)": pending, in_progress, blocked, dropped, done. Ejemplo verbatim:
+  `- [ ] **T1 — Pendiente**` / `- [/] **T2 — En curso**` / `- [!] **T3 — Bloqueada**: espera API de pagos` / `- [-] **T4 — Descartada**` / `- [x] **T5 — Hecha**`.
+  `[ ]` y `[x]`/`[X]` siguen igual.
+- **S4 — Bloqueada.** Elección: "Nuevo estado Bloqueada/Blocked (recomendado)": "Si alguna tarea no descartada está [!], la feature queda Bloqueada (salvo Terminada). Notion crea la opción del select sola."
+- **S5 — Descartadas.** Elección: "Fuera del total (recomendado)": "Progreso = hechas / (total − descartadas). Una feature con todo hecho o descartado y 0 PRs abiertos queda Terminada. Todas descartadas = Terminada 0/0."
+- **S6 — Validación rápida.** Elección: "Sí, --validar (recomendado)": "Solo lee y parsea odd/tasks y odd/tareas (sin .env, sin Notion, sin git/gh). No detecta commits inexistentes; eso queda para --dry-run."
+- **S7 — Comandos.** "Comandos /tablero:validar y /tablero:sync": "Slash commands que corren el dry-run o el sync real." (`/tablero:validar` usa `--validar`, ver S6).
+- **S8 — Hook.** "Hook de validación": "Al editar odd/tasks u odd/tareas, corre el dry-run y avisa si el doc quedó mal formado." (usa `--validar`, ver S6).
+- **S10 — Gentle Shell.** Pedido: "lo puedo agregar en gentle-shell" → "dale implementalo". Propuesta aceptada: el repo es también un paquete de Pi (sección `pi` en `package.json`): el mismo skill, comandos `/tablero-validar` y `/tablero-sync`, y una extensión que valida al editar `odd/tasks` u `odd/tareas` y le pasa el error al agente; instalable con `pi install` en la configuración de Gentle Shell (`~/.gentle-shell/agent`).
+- **S9 — Documentación.** README es/en, CHANGELOG y la ayuda del CLI describen el plugin, el formato híbrido, los estados y `--validar`.
+
+## Tasks
+
+- [x] **T1 — Estados de tarea en parser, estado y cuerpo**: S3-S5, worker + parent (idioma del cuerpo en sincronizar.ts), commit 9c87e68; verificación independiente OK (S3-S5 met), test de regresión en el commit de cierre.
+- [x] **T2 — Flag --validar**: S6, worker, commit 270c125.
+- [x] **T3 — Plugin de Claude Code (manifest, marketplace, skill, comandos, hook)**: S1-S2, S7-S8, worker, commit 68d3785.
+- [x] **T4 — Documentación README/CHANGELOG**: S9, inline (README.md) + worker (README.en.md, CHANGELOG; context backstop), commit de este cambio.
+
+- [x] **T5 — Paquete de Pi para Gentle Shell (manifest, comandos, extensión)**: S10, S9, worker (context backstop), commit 02c80a5.
+
+## Log
+
+- L1 (usuario): "tiene que ser un extencion para claude que usamos ahora odd que es una carpeta de tareas revisa gentle para que no se pisen y tenga todo bien definido"
+- L2 (usuario, contexto previo): "revisa el proyecto lo quiero para todos mis proyecto monorepo y api-microservices" → elección "A un table por repo" (guía de monorepo/microservicios ya commiteada en 8c95adb).
+- L3 (evidencia): Gentle escribe `odd/tasks/<feature>.md` con cabecera, `## Specs` (S#), `## Tasks` (ID, S#, ruta, estado, commit) y `## Log`, sin frontmatter ni checkboxes, con estados pending/in_progress/blocked/dropped/done; no usa `odd/tareas`. Un doc de Gentle "puro" falla el parser (falta `---`/`ramas`, título, checkboxes `**ID — Nombre**`). Hoy `- [-]`, `- [/]`, `- [!]` se ignoran en silencio.
+- L4 (decisiones de diseño para T1): precedencia del estado: Terminada (todas las no descartadas hechas y 0 PRs abiertos) > Bloqueada > QA pendiente > Sin empezar (ninguna hecha ni en curso) > En curso. "Pendiente" = primera tarea no hecha y no descartada. La huella de `[ ]`/`[x]` no cambia (no reescribe cuerpos existentes); los estados nuevos sí entran en la huella. En el cuerpo de Notion solo `[x]` va tildado; en curso, bloqueada y descartada llevan un prefijo en el idioma del tablero ("(en curso)", "(bloqueada)", "(descartada)" / "(in progress)", "(blocked)", "(dropped)").
+- L5 (decisión T3): el skill vive en `skill/SKILL.md` (publicado en npm) y se copia idéntico al plugin; un test exige que ambas copias sean iguales. El hook es un script Node (funciona en Windows) que corre `tablero-notion --validar` local o, si no hay, vía `npx`.
+- L7 (T3): 17 tests del plugin + 1 del parent (hook con un `tablero-notion` publicado sin `--validar` avisa y sale 0 en vez de bloquear). Corte de slice: tras 68d3785 la rama supera ~400 líneas; T1 (riesgo ítem 3) va en su propio commit para revisión aislada.
+- L8 (T1/T2): `--validar --dry-run` es error (exit 1). Todas descartadas con PRs abiertos → "Sin empezar" (sale de la precedencia). El idioma del tablero se conecta al cuerpo en `sincronizar.ts` (test RED→GREEN en tests/app/sincronizar.test.ts). Suite: 511/511, typecheck 0.
+- L9 (verificación T1, gentle-ai-verify): S3, S4 y S5 met, sin bloqueantes; huella y cuerpo de docs `[ ]`/`[x]` idénticos a 270c125 (54 comparaciones, 0 diferencias). No verificado por `--dry-run` real (gh sin autenticar en el entorno). Avisos: (1) todas descartadas con un PR abierto → "Sin empezar" (la spec no lo cubre); (2) líneas `- [-]`/`- [/]`/`- [!]` mal formadas que antes se ignoraban ahora son error de formato (intencional por S3). Sus sondas quedan en tests/core/estados-tarea-regresion.test.ts.
+- L10 (usuario): "realiza commit y prs" → elección "PRs encadenados a main"; bloqueado: la cuenta JimReflos tiene solo lectura en el upstream y el token no puede crear forks (HTTP 403). Luego: "podemos ya instalralo y probarlo con mis proyectos" → plugin instalado desde el marketplace local (scope user), TABLERO_NOTION_BIN apunta al build local; commit 282ecdc hace que los comandos lo usen.
+- L11 (usuario): "lo puedo agregar en gentle-shell" / "dale implementalo" → T5.
+- L12 (T5): 536/536 tests, typecheck y build OK. Instalado en Gentle Shell con `PI_CODING_AGENT_DIR=~/.gentle-shell/agent pi install <repo>` (backup: settings.json.bak-tablero). La extensión carga con el jiti de Pi y, ante un doc mal formado, agrega la salida de --validar al resultado del tool. No probado dentro de una sesión real de Gentle Shell (requiere reinicio).
+- L13 (verificación T5, gentle-ai-verify): S10 met; hook de Claude idéntico a 492cc92 salvo el aviso de ejecutor imposible de arrancar ("spawn" en vez de "spawnSync") y el de timeout → corregido para devolver el mismo texto; tests en tests/plugin/hook-regresion-windows.test.ts (incluye ruta Windows con unidad en minúscula y espacios). Build idéntico con allowJs. Avisos no corregidos: la extensión ignora ctx.signal (Esc no cancela una validación de hasta 120 s); sin UI el aviso se pierde.
+- L14 (usuario): "va enun solo prs" → un solo PR a main (delivery_strategy=single-pr, reemplaza la elección de PRs encadenados). Sigue bloqueado: permiso READ en el upstream y sin fork. Cuerpo del PR listo en .git/PR_BODY.md.
+- L6 (rutas): T1, T2 y T3 son unidades independientes con superficies disjuntas → escritores en paralelo. T4 inline al final. Riesgo: T1 cambia el contrato de formato que consumen los documentos y el tablero (ítem 3) → verificador independiente.

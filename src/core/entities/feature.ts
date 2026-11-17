@@ -19,7 +19,13 @@ import {
     traducirPropiedadesEntidad,
     validarEsquemaEntidad,
 } from '../schema';
-import { calcularActualizado, coincideRama, derivarEstado, diasSinActividad } from '../status';
+import {
+    calcularActualizado,
+    coincideRama,
+    derivarEstado,
+    diasSinActividad,
+    tareasActivas,
+} from '../status';
 import type {
     DocumentoODD,
     Estado,
@@ -85,6 +91,7 @@ export const TEXTOS_POR_IDIOMA = {
         },
         estados: {
             Terminada: 'Terminada',
+            Bloqueada: 'Bloqueada',
             'QA pendiente': 'QA pendiente',
             'Sin empezar': 'Sin empezar',
             'En curso': 'En curso',
@@ -108,6 +115,7 @@ export const TEXTOS_POR_IDIOMA = {
         },
         estados: {
             Terminada: 'Done',
+            Bloqueada: 'Blocked',
             'QA pendiente': 'QA pending',
             'Sin empezar': 'Not started',
             'En curso': 'In progress',
@@ -223,9 +231,11 @@ export function construirFilaEnCarpeta(
         hoy,
     });
 
-    const total = documento.tareas.length;
-    const hechas = documento.tareas.filter((t) => t.hecha).length;
-    const primeraPendiente = documento.tareas.find((t) => !t.hecha);
+    // Las descartadas quedan fuera del total y de "Pendiente".
+    const activas = tareasActivas(documento.tareas);
+    const total = activas.length;
+    const hechas = activas.filter((t) => t.hecha).length;
+    const primeraPendiente = activas.find((t) => !t.hecha);
     const estado = derivarEstado(documento.tareas, prsAbiertos.length);
 
     return {
